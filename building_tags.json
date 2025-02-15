@@ -1,0 +1,335 @@
+[
+    {
+        "object_type": "Bostad",
+        "purpose": "Småhus friliggande",
+        "tags": {
+            "building": "house"
+        },
+        "definition": "Småhus med en bostad som inte är sammanbyggt med ett annat småhus.",
+        "description": ""
+    },
+    {
+        "object_type": "Bostad",
+        "purpose": "Småhus kedjehus",
+        "tags": {
+            "building": "terrace"
+        },
+        "definition": "Två eller flera, med varandra via garage, förråd eller dylikt sammanbyggda enbostadshus.",
+        "description": "Varje bostad finns på en egen fastighet, även parhus klassificeras som kedjehus."
+    },
+    {
+        "object_type": "Bostad",
+        "purpose": "Småhus radhus",
+        "tags": {
+            "building": "terrace"
+        },
+        "definition": "Småhus som ligger i en rad om minst tre hus vars bostadsdelar är direkt sammanbyggda med varandra och där varje bostad finns på egen fastighet.",
+        "description": ""
+    },
+    {
+        "object_type": "Bostad",
+        "purpose": "Småhus med flera lägenheter",
+        "tags": {
+            "building": "semidetached_house"
+        },
+        "definition": "Småhus med flera bostäder som finns på samma fastighet.",
+        "description": "Kan t.ex. vara tvåbostadshus alternativt hyres- eller bostadsrättsradhus om minst tre bostäder på samma fastighet."
+    },
+    {
+        "object_type": "Bostad",
+        "purpose": "Flerfamiljshus",
+        "tags": {
+            "building": "residential"
+        },
+        "definition": "Byggnad som är inrättad med minst tre bostadslägenheter och kan innehålla kontor, butik, hotell, restaurang och liknande.",
+        "description": "Begreppet ”flerfamiljshus” idag används i mindre omfattning och istället används i samhällsbyggnadsprocessen begreppet ”flerbostadshus”, se Boverkets Ändamålskatalog. Ett flerfamiljshus kan ibland också innehålla kontor, butik, hotell, restaurang, förskola, vårdcentral och liknande (vanligtvis i bottenplanet). Då detta förekommer i byggnaden så ska huvudsakligt ändamål vara flerfamiljshus och de övriga ändamålen ska anges som övrigt ändamål. Vanligtvis som Verksamhet eller Samhällsfunktion."
+    },
+    {
+        "object_type": "Bostad",
+        "purpose": "Ospecificerad",
+        "tags": {
+            "building": "residential"
+        },
+        "definition": "Bostad med okänt bostadsändamål.",
+        "description": "Får ej användas vid nyregistering. Får endast anges av Lantmäteriet vid ajourhållningsmetod där ändamål inte kan avgöras."
+    },
+    {
+        "object_type": "Industri",
+        "purpose": "Annan tillverkningsindustri",
+        "tags": {
+            "building": "industrial"
+        },
+        "definition": "Byggnad för industriell verksamhet med tillverkning.",
+        "description": ""
+    },
+    {
+        "object_type": "Industri",
+        "purpose": "Industrihotell",
+        "tags": {
+            "building": "industrial"
+        },
+        "definition": "Byggnad inrymmande flera olika industrier.",
+        "description": ""
+    },
+    {
+        "object_type": "Industri",
+        "purpose": "Metall- eller maskinindustri",
+        "tags": {
+            "building": "industrial"
+        },
+        "definition": "Industri för tillverkning och förädling av metall och maskiner.",
+        "description": "Exempel: Bilindustri, järnverk, mekanisk industri, metallindustri, varv."
+    },
+    {
+        "object_type": "Industri",
+        "purpose": "Textilindustri",
+        "tags": {
+            "building": "industrial"
+        },
+        "definition": "Industri som tillverkar garn, tyg och dylikt samt bereder dessa.",
+        "description": "Exempel: Tekoindustri, väveri."
+    },
+    {
+        "object_type": "Industri",
+        "purpose": "Trävaruindustri",
+        "tags": {
+            "building": "industrial"
+        },
+        "definition": "Industri för förädling av skogsråvaror.",
+        "description": "Exempel: Träindustri, massaindustri, pappersbruk, pappersindustri, möbelindustri, sågverk, snickeri."
+    },
+    {
+        "object_type": "Industri",
+        "purpose": "Övrig industribyggnad",
+        "tags": {
+            "building": "warehouse"
+        },
+        "definition": "Byggnad för övrig industriell verksamhet som inte är tillverkning.",
+        "description": "Exempel: Lagerbyggnad (även utan väggar), reparationsverkstad, bilförsäljning."
+    },
+    {
+        "object_type": "Industri",
+        "purpose": "Ospecificerad",
+        "tags": {
+            "building": "industrial"
+        },
+        "definition": "Industri med okänt ändamål.",
+        "description": ""
+    },
+    {
+        "object_type": "Samhällsfunktion",
+        "purpose": "Badhus",
+        "tags": {
+            "building": "sports_centre"
+        },
+        "definition": "Hus med offentlig badinrättning.",
+        "description": "Exempel: Badhus, simhall, äventyrsbad."
+    },
+    {
+        "object_type": "Samhällsfunktion",
+        "purpose": "Brandstation",
+        "tags": {
+            "building": "fire_station"
+        },
+        "definition": "Byggnad för räddningstjänsten.",
+        "description": ""
+    },
+    {
+        "object_type": "Samhällsfunktion",
+        "purpose": "Busstation",
+        "tags": {
+            "building": "transportation"
+        },
+        "definition": "Större busshållplats eller resecentrum med flera linjer med byggnad.",
+        "description": "Exempel: Resecentrum."
+    },
+    {
+        "object_type": "Samhällsfunktion",
+        "purpose": "Djursjukhus",
+        "tags": {
+            "building": "civic"
+        },
+        "definition": "Byggnad för stationär vård av sjuka djur.",
+        "description": "Även mindre veterinärmottagningar (av typen där besök tas emot bara under dagen) omfattas."
+    },
+    {
+        "object_type": "Samhällsfunktion",
+        "purpose": "Högskola",
+        "tags": {
+            "building": "college"
+        },
+        "definition": "Eftergymnasial skolform för högre utbildning och forskning på högskola.",
+        "description": "Klassificeras i högskoleförordning."
+    },
+    {
+        "object_type": "Samhällsfunktion",
+        "purpose": "Ishall",
+        "tags": {
+            "building": "sports_centre"
+        },
+        "definition": "Inbyggd konstfrusen isanläggning.",
+        "description": "Exempel: Ishockey, bandy, skridskor."
+    },
+    {
+        "object_type": "Samhällsfunktion",
+        "purpose": "Järnvägsstation",
+        "tags": {
+            "building": "train_station"
+        },
+        "definition": "Byggnad som används för samordning av trafik och service för person- och godstrafik och där personer uppehåller sig före, efter och mellan transport med tåg.",
+        "description": ""
+    },
+    {
+        "object_type": "Samhällsfunktion",
+        "purpose": "Kommunhus",
+        "tags": {
+            "building": "public"
+        },
+        "definition": "Huvudbyggnad för kommunledning.",
+        "description": "Exempel: Kommunhus, stadshus, rådhus."
+    },
+    {
+        "object_type": "Samhällsfunktion",
+        "purpose": "Kriminalvårdsanstalt",
+        "tags": {
+            "building": "civic"
+        },
+        "definition": "Institution för verkställande av fängelsestraff.",
+        "description": "Exempel: Kriminalvårdsanstalt, fängelse."
+    },
+    {
+        "object_type": "Samhällsfunktion",
+        "purpose": "Kulturbyggnad",
+        "tags": {
+            "building": "civic"
+        },
+        "definition": "Byggnad för kulturellt ändamål.",
+        "description": "Exempel: Teater, konserthus, museum, konsthall, bibliotek, biograf, hembygdsgård, Folkets hus."
+    },
+    {
+        "object_type": "Samhällsfunktion",
+        "purpose": "Multiarena",
+        "tags": {
+            "building": "sports_centre"
+        },
+        "definition": "Flexibel större besöksanläggning för sport- och idrottsverksamhet, kulturevenemang och liknande.",
+        "description": "Syftet med en multiarena är att kunna anordna olika typer av evenemang med stor publik. Arenan är en lokal som enkelt kan anpassas till olika typer av evenemang så som till exempel ishockey, handboll, ridsport, konserter eller mässor. Ofta fristående byggnad men kan även vara sammanbyggda med andra byggnader."
+    },
+    {
+        "object_type": "Samhällsfunktion",
+        "purpose": "Polisstation",
+        "tags": {
+            "building": "public"
+        },
+        "definition": "Byggnad inrymmande central för polisverksamhet.",
+        "description": ""
+    },
+    {
+        "object_type": "Samhällsfunktion",
+        "purpose": "Ridhus",
+        "tags": {
+            "building": "sports_centre"
+        },
+        "definition": "Byggnad med manege för ridning.",
+        "description": "Ett ridhus kan användas för undervisning, träning och tävling. Även privata ridhus för hobbyverksamhet ingår. Ofta placerat i anslutning till djurstall och ofta en fristående byggnad. Exempel: Ridhus, ridskola."
+    },
+    {
+        "object_type": "Samhällsfunktion",
+        "purpose": "Samfund",
+        "tags": {
+            "building": "religious"
+        },
+        "definition": "Byggnad för fast organiserad religiös gemenskap.",
+        "description": "Exempel: Kyrka, frikyrka, moské, synagoga, tempel, kloster, församlingshem, krematorium, kapell, gravkapell."
+    },
+    {
+        "object_type": "Samhällsfunktion",
+        "purpose": "Sjukhus",
+        "tags": {
+            "building": "hospital"
+        },
+        "definition": "Inrättning för sluten vård och specialiserad öppenvård.",
+        "description": "Exempel: Lasarett, länssjukhus, regionsjukhus."
+    },
+    {
+        "object_type": "Samhällsfunktion",
+        "purpose": "Skola",
+        "tags": {
+            "building": "school"
+        },
+        "definition": "Byggnad för undervisning.",
+        "description": "Exempel: Förskola, grundskola, gymnasium, yrkesskola, komvuxutbildning, folk-, handels-, jakt-, jordbruk-, lanthushålls-, natur- och kultur-, naturbruks-, nomad-, räddnings-, skogsbruks-, verkstads-, vård-, samisk skola."
+    },
+    {
+        "object_type": "Samhällsfunktion",
+        "purpose": "Sporthall",
+        "tags": {
+            "building": "sports_centre"
+        },
+        "definition": "Inomhusanläggning för sport och idrott.",
+        "description": "Exempel: Idrottshall, badmintonhall, curlinghall, tennishall, padelhall."
+    },
+    {
+        "object_type": "Samhällsfunktion",
+        "purpose": "Universitet",
+        "tags": {
+            "building": "university"
+        },
+        "definition": "Eftergymnasial skolform för högre utbildning och forskning på universitet.",
+        "description": "Forskningsinstitut, forskningsstationer som är knutna till universitet ingår. Klassificeras i högskoleförordning."
+    },
+    {
+        "object_type": "Samhällsfunktion",
+        "purpose": "Vårdcentral",
+        "tags": {
+            "building": "civic"
+        },
+        "definition": "Enhet för öppen hälso- och sjukvård.",
+        "description": "Exempel: Hälsocentral, vårdcentral, läkarstation, vårdcentrum. Dock inte privat läkarmottagning."
+    },
+    {
+        "object_type": "Samhällsfunktion",
+        "purpose": "Ospecificerad",
+        "tags": {
+            "building": "civic"
+        },
+        "definition": "Samhällsfunktion med okänt ändamål.",
+        "description": "Ska endast anges där mer detaljerat ändamål inte kan avgöras."
+    },
+    {
+        "object_type": "Verksamhet",
+        "purpose": "-",
+        "tags": {
+            "building": "commercial"
+        },
+        "definition": "Byggnad som till övervägande del används för näringsverksamhet.",
+        "description": "Exempel: Logi: hotell, konferens, vandrarhem. Handel: detaljhandel, partihandel, bensinstation, café, apotek. Övrig näringsverksamhet: bil/fordonstvätt. Komplement: miljöhus, lager, skärmtak, cykelförvaring. Byggnad med en area på marken som är 15 kvm eller större ska redovisas. Byggnader mindre än 15 kvm får redovisas."
+    },
+    {
+        "object_type": "Ekonomibyggnad",
+        "purpose": "-",
+        "tags": {
+            "building": "barn"
+        },
+        "definition": "Byggnad som till övervägande del är till för jordbruk, skogsbruk eller därmed jämförbar näring..",
+        "description": "Exempel: Silo, maskinhall, cistern, växthus, djurstall. Byggnad med en area på marken som är 15 kvm eller större ska redovisas. Byggnader mindre än 15 kvm får redovisas."
+    },
+    {
+        "object_type": "Komplementbyggnad",
+        "purpose": "-",
+        "tags": {
+            "building": "garage"
+        },
+        "definition": "Byggnad som uppenbarligen hör till andra byggnader med ändamålet bostad, samhällsfunktion, verksamhet eller industri.",
+        "description": "Exempel: Uthus, garage, carport, cistern, lager, sjöbod, friggebod. Byggnad med en area på marken som är 15 kvm eller större ska redovisas. Byggnader mindre än 15 kvm får redovisas."
+    },
+    {
+        "object_type": "Övrig byggnad",
+        "purpose": "-",
+        "tags": {
+            "building": "yes"
+        },
+        "definition": "Byggnad vars ändamål inte är bostad, industri, samhällsfunktion, verksamhet, ekonomibyggnad eller komplementbyggnad.",
+        "description": "Exempel: Kolonistuga, vindskydd, kåta, torn, väderkvarn, klockstapel, fyr, fristående skärmtak av varaktig konstruktion. Byggnad med en area på marken som är 15 kvm eller större ska redovisas. Byggnader mindre än 15 kvm får redovisas."
+    }
+]
