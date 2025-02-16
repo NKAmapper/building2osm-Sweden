@@ -54,6 +54,15 @@
         "description": "Får ej användas vid nyregistering. Får endast anges av Lantmäteriet vid ajourhållningsmetod där ändamål inte kan avgöras."
     },
     {
+        "object_type": "Bostad",
+        "purpose": "",
+        "tags": {
+            "building": "residential"
+        },
+        "definition": "",
+        "description": ""
+    },  
+    {
         "object_type": "Industri",
         "purpose": "Annan tillverkningsindustri",
         "tags": {
@@ -114,6 +123,15 @@
             "building": "industrial"
         },
         "definition": "Industri med okänt ändamål.",
+        "description": ""
+    },
+    {
+        "object_type": "Industri",
+        "purpose": "",
+        "tags": {
+            "building": "industrial"
+        },
+        "definition": "",
         "description": ""
     },
     {
@@ -295,6 +313,15 @@
         },
         "definition": "Samhällsfunktion med okänt ändamål.",
         "description": "Ska endast anges där mer detaljerat ändamål inte kan avgöras."
+    },
+    {
+        "object_type": "Samhällsfunktion",
+        "purpose": "",
+        "tags": {
+            "building": "civic"
+        },
+        "definition": "",
+        "description": ""
     },
     {
         "object_type": "Verksamhet",
