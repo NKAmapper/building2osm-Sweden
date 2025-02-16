@@ -19,7 +19,7 @@ from io import TextIOWrapper
 from io import BytesIO
 
 
-version = "0.8.0"
+version = "0.8.1"
 
 verbose = False				# Provides extra messages about polygon loading
 
@@ -271,40 +271,6 @@ def simplify_polygon(polygon, epsilon):
 
 
 
-# Parse WKT coordinates and return polygon list of (longitude, latitude).
-# Omit equal coordinates in sequence.
-
-def parse_polygon(coord_text):
-
-	split_coord = coord_text.split(" ")
-	coordinates = []
-	last_node1 = (None, None)
-	last_node2 = (None, None)
-	for i in range(0, len(split_coord) - 1, 2):
-		lon = float(split_coord[i])
-		lat = float(split_coord[i+1])
-		node = (lon, lat)
-		if node != last_node1:
-			if node == last_node2:
-				coordinates.pop()
-				last_node1 = last_node2
-			else:
-				coordinates.append(node)
-		last_node2 = last_node1
-		last_node1 = node
-
-	return coordinates
-
-
-
-# Transform url characters
-
-def fix_url (url):
-
-	return url.replace("Æ","E").replace("Ø","O").replace("Å","A").replace("æ","e").replace("ø","o").replace("å","a").replace(" ", "_")
-
-
-
 # Load dict of all municipalities
 
 def load_municipalities():
@@ -361,18 +327,16 @@ def load_building_types():
 	file.close()
 
 	for row in data:
-		if not row['purpose']:
-			row['purpose'] = "-"
 		name = row['purpose']
 		if name == "Ospecificerad":
 			name += " " + row['object_type'].lower()
-		if name == "-":
+		if not name:
 			name = row['object_type']
 
 		osm_tags = { 'building': 'yes' }
 		osm_tags.update(row['tags'])
 
-		building_types[ row['object_type'], row['purpose'] ] = {
+		building_types[ row['object_type'] + ";" + row['purpose'] ] = {
 			'name': name,
 			'tags': osm_tags
 		}
@@ -405,17 +369,15 @@ def load_buildings(filename):
 
 		building_type_list = []
 
-		if "objekttyp" in properties and properties['objekttyp']:
+		for purpose in ['endamal1', 'endamal2' , 'endamal3', 'endamal4']:
+			if purpose in properties and properties[ purpose ]:
+				building_type = properties[ purpose ]
+				building_type_list.append(building_type)
+				if building_type not in building_types and building_type not in not_found:
+					not_found.append(building_type)
 
-			for purpose in ['endamal1', 'endamal2' , 'endamal3', 'endamal4']:
-				if purpose in properties and properties[ purpose ]:
-					building_type = ( properties['objekttyp'], properties[ purpose ] )
-					building_type_list.append(building_type)
-					if building_type not in building_types and building_type not in not_found:
-						not_found.append(building_type)
-
-			if not building_type_list:
-				building_type = ( properties['objekttyp'], "-" )
+			if not building_type_list and "objekttyp" in properties and properties['objekttyp']:
+				building_type = ( properties['objekttyp'] + ";" )
 				building_type_list = [ building_type ]
 				if building_type not in building_types and building_type not in not_found:
 					not_found.append(building_type)
@@ -442,7 +404,7 @@ def load_buildings(filename):
 				tags['alt_name'] += ";" + properties['byggnadsnamn3']
 
 		if "husnummer" in properties and properties['husnummer']:
-			tags['ref'] = str(properties['husnummer'])
+			tags['HOUSE_REF'] = str(properties['husnummer'])
 
 		if "versiongiltigfran" in properties and properties['versiongiltigfran']:
 			tags['DATE'] = properties['versiongiltigfran'][:10]
@@ -450,22 +412,25 @@ def load_buildings(filename):
 				tags['DATE'] += " v" + str(properties['objektversion'])
 
 		if "ursprunglig_organisation" in properties and properties['ursprunglig_organisation']:
-			tags['SOURCE'] = properties['ursprunglig_organisation']
+			tags['SOURCE'] = properties['ursprunglig_organisation'][0].upper() + properties['ursprunglig_organisation'][1:]
 
-		if "huvudbyggnad" in properties and properties['huvudbyggnad']:
-			tags['MAIN'] = properties['huvudbyggnad']		
+		if "huvudbyggnad" in properties and properties['huvudbyggnad'] == "Ja":
+			tags['MAIN'] = "yes"
 
-		# Standardise geometry
+		# Standardise geometry to Polygon
 
 		if building['geometry']['type'] == "MultiPolygon":
 			coordinates = building['geometry']['coordinates'][0]  # One outer area only
 		elif building['geometry']['type'] == "Polygon":
 			coordinates = building['geometry']['coordinates']
+		elif building['geometry']['type'] == "LineString":
+			coordinates = [ building['geometry']['coordinates'] ]
 		else:
 			coordinates = []
 
-		for i in range(len(coordinates)):
-			coordinates[ i ] = [ tuple(node) for node in coordinates[ i ] ]
+		# Convert nodes to tuples
+		for i, polygon in enumerate(coordinates):
+			coordinates[ i ] = [ tuple(node) for node in polygon ]
 
 		feature = {
 			"type": "Feature",
@@ -477,7 +442,16 @@ def load_buildings(filename):
 		}
 
 		if coordinates:
-			buildings[ref] = feature
+			# Ensure unique ref for body parts
+			main_ref = ref
+			sub_ref = 1
+			while ref in buildings:
+				sub_ref += 1
+				ref = main_ref + ":" + str(sub_ref)
+			if sub_ref > 1:
+				buildings[ main_ref ]['properties']['MULTI'] = "1"
+				feature['properties']['MULTI'] = str(sub_ref)
+			buildings[ ref ] = feature
 
 	# Adjust building tagging according to size
 
@@ -499,7 +473,7 @@ def load_buildings(filename):
 	count_polygons = sum((building['geometry']['type'] == "Polygon") for building in buildings.values())
 	message ("\tLoaded %i building polygons\n" % count_polygons)
 	if not_found:
-		message ("\t*** Building type(s) not found: %s\n" % (", ".join(sorted([ b[0] + "/" + b[1] for b in not_found ]))))
+		message ("\t*** Building type(s) not found: %s\n" % (", ".join(sorted([ purpose for purpose in not_found ]))))
 
 
 
@@ -1037,10 +1011,10 @@ def save_buildings(filename):
 					del building[key]
 
 			# Delete upper case debug tags		
-			if not debug:
+			if not debug or not verify:
 				for key in list(building['properties'].keys()):
-					if key == key.upper() and key not in ['TYPE', 'STATUS', 'DATE'] and \
-							not(verify and "VERIFY" in key) and not(original and key == "SEFRAK"):
+					if key == key.upper() and (not verify and "VERIFY_" in key or not debug and "DEBUG_" in key): 
+#							and key not in ['TYPE', 'STATUS', 'DATE', 'MAIN', 'HOUSE_REF']
 						del building['properties'][key]
 			features['features'].append(building)
 
@@ -1080,7 +1054,7 @@ def process_municipality(municipality_id, municipality_name, input_filename=""):
 
 	filename = input_filename
 	if not filename:
-		filename = "byggnader_%s_%s_raw.geojson" % (municipality_id, municipality_name.replace(" ", "_"))
+		filename = "byggnad_kn%s.geojson" % municipality_id
 	load_buildings(filename)
 
 	if len(buildings) > 0:
@@ -1166,4 +1140,4 @@ if __name__ == '__main__':
 
 #		if "-split" in sys.argv:
 #			message("Start splitting...\n\n")
-#			subprocess.run(['python', "municipality_split.py", municipality_id])
+#			subprocess.run(['python', "building_split.py", municipality_id])
