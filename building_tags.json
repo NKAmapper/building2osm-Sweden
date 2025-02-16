@@ -3,7 +3,7 @@
         "object_type": "Bostad",
         "purpose": "Småhus friliggande",
         "tags": {
-            "building": "house"
+            "building": "detached"
         },
         "definition": "Småhus med en bostad som inte är sammanbyggt med ett annat småhus.",
         "description": ""
@@ -12,7 +12,7 @@
         "object_type": "Bostad",
         "purpose": "Småhus kedjehus",
         "tags": {
-            "building": "terrace"
+            "building": "house"
         },
         "definition": "Två eller flera, med varandra via garage, förråd eller dylikt sammanbyggda enbostadshus.",
         "description": "Varje bostad finns på en egen fastighet, även parhus klassificeras som kedjehus."
@@ -21,7 +21,7 @@
         "object_type": "Bostad",
         "purpose": "Småhus radhus",
         "tags": {
-            "building": "terrace"
+            "building": "house"
         },
         "definition": "Småhus som ligger i en rad om minst tre hus vars bostadsdelar är direkt sammanbyggda med varandra och där varje bostad finns på egen fastighet.",
         "description": ""
@@ -30,7 +30,7 @@
         "object_type": "Bostad",
         "purpose": "Småhus med flera lägenheter",
         "tags": {
-            "building": "semidetached_house"
+            "building": "terrace"
         },
         "definition": "Småhus med flera bostäder som finns på samma fastighet.",
         "description": "Kan t.ex. vara tvåbostadshus alternativt hyres- eller bostadsrättsradhus om minst tre bostäder på samma fastighet."
@@ -39,7 +39,7 @@
         "object_type": "Bostad",
         "purpose": "Flerfamiljshus",
         "tags": {
-            "building": "residential"
+            "building": "apartments"
         },
         "definition": "Byggnad som är inrättad med minst tre bostadslägenheter och kan innehålla kontor, butik, hotell, restaurang och liknande.",
         "description": "Begreppet ”flerfamiljshus” idag används i mindre omfattning och istället används i samhällsbyggnadsprocessen begreppet ”flerbostadshus”, se Boverkets Ändamålskatalog. Ett flerfamiljshus kan ibland också innehålla kontor, butik, hotell, restaurang, förskola, vårdcentral och liknande (vanligtvis i bottenplanet). Då detta förekommer i byggnaden så ska huvudsakligt ändamål vara flerfamiljshus och de övriga ändamålen ska anges som övrigt ändamål. Vanligtvis som Verksamhet eller Samhällsfunktion."
@@ -246,7 +246,7 @@
         "object_type": "Samhällsfunktion",
         "purpose": "Ridhus",
         "tags": {
-            "building": "sports_centre"
+            "building": "riding_hall"
         },
         "definition": "Byggnad med manege för ridning.",
         "description": "Ett ridhus kan användas för undervisning, träning och tävling. Även privata ridhus för hobbyverksamhet ingår. Ofta placerat i anslutning till djurstall och ofta en fristående byggnad. Exempel: Ridhus, ridskola."
@@ -282,7 +282,7 @@
         "object_type": "Samhällsfunktion",
         "purpose": "Sporthall",
         "tags": {
-            "building": "sports_centre"
+            "building": "sports_hall"
         },
         "definition": "Inomhusanläggning för sport och idrott.",
         "description": "Exempel: Idrottshall, badmintonhall, curlinghall, tennishall, padelhall."
@@ -336,7 +336,7 @@
         "object_type": "Ekonomibyggnad",
         "purpose": "",
         "tags": {
-            "building": "barn"
+            "building": "farm_auxiliary"
         },
         "definition": "Byggnad som till övervägande del är till för jordbruk, skogsbruk eller därmed jämförbar näring..",
         "description": "Exempel: Silo, maskinhall, cistern, växthus, djurstall. Byggnad med en area på marken som är 15 kvm eller större ska redovisas. Byggnader mindre än 15 kvm får redovisas."
