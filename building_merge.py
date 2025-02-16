@@ -16,7 +16,7 @@ import urllib.request, urllib.parse
 from xml.etree import ElementTree as ET
 
 
-version = "0.10.0"
+version = "0.10.1"
 
 request_header = {"User-Agent": "building2osm"}
 
@@ -745,32 +745,48 @@ def add_building(building, osm_element):
 
 		if osm_element is not None:
 
-			if building['properties']['building'] == "yes" and way_element['tags']['building'] != "yes":
-				del building['properties']['building']
-				building['properties']['YES'] = "yes"
-				if "TYPE" in building['properties']:
+			# Do not tag LM building description if not needed
+
+			if ("TYPE" in building['properties']
+					and (building['properties']['building'] == "yes"
+						or way_element['tags']['building'] == "yes"
+						or (way_element['tags']['building'] != building['properties']['building']))):
 					del building['properties']['TYPE']
 
-			elif (way_element['tags']['building'] != "yes"
-					and way_element['tags']['building'] != building['properties']['building']):
-#				 	and not (way_element['tags']['building'] in similar_buildings['residential']
-#				 			and building['properties']['building'] in similar_buildings['residential'])
-#				 	and not (way_element['tags']['building'] in similar_buildings['commercial']
-#				 			and building['properties']['building'] in similar_buildings['commercial'])
-#				 	and not (way_element['tags']['building'] in similar_buildings['farm']
-#				 			and building['properties']['building'] in similar_buildings['farm'])):
+			# Update tags
 
-				way_element['tags']['OSM_BUILDING'] = way_element['tags']['building']
+			for key, value in iter(building['properties'].items()):
 
-			elif "TYPE" in building['properties']:
-				del building['properties']['TYPE']
+				if key == "building":
+					if way_element['tags']['building'] == value or value == "yes":
+						continue  # Do not retag
+					elif way_element['tags']['building'] == "yes":
+						way_element['tags'][ key ] = value
+					else:
+						way_element['tags']['OSM_BUILDING'] = way_element['tags']['building']
+						way_element['tags'][ key ] = value
+
+				elif key in ["name", "alt_name"]:
+					if key in way_element['tags'] and way_element['tags'] == value:
+						way['element_tags'][ "LM_" + key ] = value
+
+				elif key in way_element['tags'] and way_element['tags'] == value:
+					way_element['tags'][ "OSM_" + key ] = way_element['tags'][ key ]
+					way_element['tags'][ key ] = value
+
+				else:
+					way_element['tags'][ key ] = value
+
+			# Delete certain tags
 
 			delete_tags = ["building:type", "source", "source:date", "created_by"]
 			for tag in list(way_element['tags']):
 				if tag in delete_tags or remove_addr and tag[:5] == "addr:":
 					del way_element['tags'][ tag ]
 
-		way_element['tags'].update(building['properties'])  # If merge, update old tags
+		else:
+			way_element['tags'].update(building['properties'])
+
 		way_element['center'] = building['center']
 		way_element['area'] = building['area']
 		
@@ -1223,6 +1239,3 @@ if __name__ == '__main__':
 
 	used_time = time.time() - start_time
 	message("Done in %s (%i buildings per second)\n\n" % (timeformat(used_time), len(osm_buildings) / used_time))
-
-
-
