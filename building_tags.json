@@ -298,7 +298,7 @@
     },
     {
         "object_type": "Verksamhet",
-        "purpose": "-",
+        "purpose": "",
         "tags": {
             "building": "commercial"
         },
@@ -307,7 +307,7 @@
     },
     {
         "object_type": "Ekonomibyggnad",
-        "purpose": "-",
+        "purpose": "",
         "tags": {
             "building": "barn"
         },
@@ -316,7 +316,7 @@
     },
     {
         "object_type": "Komplementbyggnad",
-        "purpose": "-",
+        "purpose": "",
         "tags": {
             "building": "garage"
         },
@@ -325,7 +325,7 @@
     },
     {
         "object_type": "Övrig byggnad",
-        "purpose": "-",
+        "purpose": "",
         "tags": {
             "building": "yes"
         },
