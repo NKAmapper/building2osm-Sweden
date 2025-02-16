@@ -64,7 +64,7 @@
     },  
     {
         "object_type": "Industri",
-        "purpose": "Annan tillverkningsindustri",
+        "purpose": "Tillverkning",
         "tags": {
             "building": "industrial"
         },
