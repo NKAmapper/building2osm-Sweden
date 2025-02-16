@@ -14,7 +14,7 @@ import os.path
 import urllib.request, urllib.parse
 
 
-version = "0.1.0"
+version = "0.2.0"
 
 overpass_api = "https://overpass-api.de/api/interpreter"  # Overpass endpoint
 #overpass_api = "https://overpass.kumi.systems/api/interpreter"
@@ -218,6 +218,31 @@ def load_import_buildings(filename):
 
 
 
+# Mark buildings with subdivision
+
+def mark_buildings(min_bbox, max_bbox, subdivision):
+
+	# Mark buildings within box
+
+	marked_buildings = set()
+	for building in buildings:
+		if ("PART" not in building['properties']
+				and min_bbox[0] <= building['centre'][0] <  max_bbox[0]
+				and min_bbox[1] <= building['centre'][1] <  max_bbox[1]):
+			building['properties']['PART'] = str(subdivision)
+			if "ref:lm_byggnad" in building['properties']:
+				marked_buildings.add(building['properties']['ref:lm_byggnad'])
+
+	# Keep buildings with same ref to same box
+
+	for building in buildings:
+		if ("PART" not in building['properties']
+				and "ref:lm_byggnad" in building['properties']
+				and building['properties']['ref:lm_byggnad'] in marked_buildings):
+			building['properties']['PART'] = str(subdivision)
+
+
+
 # Recursively split buildings into smaller boxes until number of buildings is sufficiently small
 
 def split_box(min_bbox, max_bbox, level):
@@ -243,9 +268,7 @@ def split_box(min_bbox, max_bbox, level):
 		else:		
 			# Creeate new part and mark buildings
 			subdivision += 1
-			for building in buildings:
-				if min_bbox[0] <= building['centre'][0] <  max_bbox[0] and min_bbox[1] <= building['centre'][1] <  max_bbox[1]:
-					building['properties']['PART'] = str(subdivision)
+			mark_buildings(min_bbox, max_bbox, subdivision)
 			if debug:
 				message ("%sSAVE BOX %i %i\n" % (("\t" * level), subdivision, inside_box))
 			return inside_box
@@ -276,10 +299,7 @@ def split_box(min_bbox, max_bbox, level):
 
 			# Create new part and mark buildings
 			subdivision += 1
-			for building in buildings:
-				if (min_bbox[0] <= building['centre'][0] <  max_bbox[0] and min_bbox[1] <= building['centre'][1] <  max_bbox[1]
-						and "PART" not in building['properties']):
-					building['properties']['PART'] = str(subdivision)
+			mark_buildings(min_bbox, max_bbox, subdivision)
 			if debug:
 				message ("%sSAVE REST %i %i\n" % (("\t" * level), subdivision, inside_box - saved))
 			saved = inside_box
