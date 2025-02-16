@@ -6,11 +6,11 @@ Tools for importing buildings in Sweden to OpenStreetMap
 Generates tagged geojson import file with building footprints.
 
 Usage:
-<code>python3 building2osm.py \<municipality\> \<filename.geosjon\> [-split] [-original] [-verify] [-debug]</code>
+<code>python3 building2osm.py \<municipality\> [\<filename.geosjon\>] [-split] [-original] [-verify] [-debug]</code>
 
 Parameters:
 * _municipality_ - Name of the municipality to generate. Output for several municipalities if "Sweden" is given.
-* _filename.geojson_ - File containing source data of buildings for municipality. First download GeoPackage file from Lantmäteriet, load into JOSM and save to geojson file. (This will be automated in later versions).
+* _filename.geojson_ - Optional file containing source data of buildings for municipality. First download GeoPackage file from Lantmäteriet, load into JOSM and save to geojson file. (This will be automated in later versions).
 * <code>-split</code> - Also split output file into smaller subdivisions ("bydel", electoral or post districts).
 * <code>-original</code> - Produce file without any modifications.
 * <code>-verify</code> - Include extra tags for verification of topology modifications.
@@ -28,6 +28,18 @@ Parameters:
 * _max distance_ - Optional maximum Hausdorff distance between matched buildings. Default value is 10 metres (5 metres if the building is tagged). Increase if needed for larger offsets.
 * _filename.geojson_ - Optional input file in geojson format. If not specified, the import file for the municipality will be loaded (it must be present in the default folder or in a predefined folder).
 * <code>-debug</code> - Include extra tags for debugging.
+
+### building_split
+
+Split building import file into smaller subdivisions. Useful is municipality contains more than approx. 10.000 buildings.
+
+usage:
+<code>python3 building_split.py \<municipality\> | \<filename.geosjon\> [\<target_size\>] [-tag] [-debug]</code>
+
+Parameters:
+* _municipality_ - Either name of the municipality (will produce filename).
+* _filename.geosjon_ - Or name of import file to split.
+* _target_size_ - Optional target size, i.e. number of buildings per partitioned file (default 10.000).
 
 ### Notes
 * Source data is from Lantmäteriet. 
@@ -50,6 +62,9 @@ Parameters:
     5) Check if entrances or other tagged nodes needs to be reconnected to the new buildings (search for <code>type:node ways:0 -untagged</code>).
   * Consider using _Edit->Purge_ in JOSM to work on a subset of a large municipality.
   * The _building_merge.py_ program may be run several times for the same municipality. Only buildings with a new _ref:lm_byggnad_ tag will be added each time.
+
+### Changelog
+* Added _building_split.py_.
 
 ### References
 
