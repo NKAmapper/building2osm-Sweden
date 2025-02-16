@@ -19,7 +19,7 @@ from io import TextIOWrapper
 from io import BytesIO
 
 
-version = "0.8.1"
+version = "0.8.2"
 
 verbose = False				# Provides extra messages about polygon loading
 
@@ -369,7 +369,7 @@ def load_buildings(filename):
 
 		building_type_list = []
 
-		for purpose in ['endamal1', 'endamal2' , 'endamal3', 'endamal4']:
+		for purpose in ['andamal1', 'andamal2' , 'andamal3', 'andamal4']:
 			if purpose in properties and properties[ purpose ]:
 				building_type = properties[ purpose ]
 				building_type_list.append(building_type)
