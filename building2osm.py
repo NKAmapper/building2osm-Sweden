@@ -19,7 +19,7 @@ from io import TextIOWrapper
 from io import BytesIO
 
 
-version = "0.8.2"
+version = "0.8.3"
 
 verbose = False				# Provides extra messages about polygon loading
 
@@ -458,17 +458,20 @@ def load_buildings(filename):
 	for building in buildings.values():
 		if (building['geometry']['type'] == "Polygon" 
 				and "building" in building['properties']
-				and building['properties']['building'] in ["garage", "barn"]):
+				and building['properties']['building'] in ["garage", "farm_auxiliary", "house"]):
 
 			area = abs(polygon_area(building['geometry']['coordinates'][0]))
 			if building['properties']['building'] == "garage" and area > 100:
 				building['properties']['building'] = "garages"
 
-			elif building['properties']['building'] in ["garage", "barn"] and area < 15:
+			elif building['properties']['building'] in ["garage", "farm_auxiliary"] and area < 15:
 				building['properties']['building'] = "shed"
 
-			elif building['properties']['building'] == "barn" and area < 100:
-				building['properties']['building'] = "farm_auxiliary"
+			elif building['properties']['building'] == "farm_auxiliary" and area > 100:
+				building['properties']['building'] = "barn"
+
+			elif building['properties']['building'] == "house" and area > 250:
+				building['properties']['building'] = "terrace"
 
 	count_polygons = sum((building['geometry']['type'] == "Polygon") for building in buildings.values())
 	message ("\tLoaded %i building polygons\n" % count_polygons)
