@@ -345,7 +345,7 @@
         "object_type": "Komplementbyggnad",
         "purpose": "",
         "tags": {
-            "building": "garage"
+            "building": "yes"
         },
         "definition": "Byggnad som uppenbarligen hör till andra byggnader med ändamålet bostad, samhällsfunktion, verksamhet eller industri.",
         "description": "Exempel: Uthus, garage, carport, cistern, lager, sjöbod, friggebod. Byggnad med en area på marken som är 15 kvm eller större ska redovisas. Byggnader mindre än 15 kvm får redovisas."
