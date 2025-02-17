@@ -57,8 +57,8 @@ Parameters:
   * Use the To-do plugin in JOSM to:
     1) Resolve _Overlapping buildings_ warnings. 
     2) Resolve _Building within buildings_ warnings.
-    3) Check <code>OSM_BUILDING=*</code> for manual retagging of building types.
-    4) Check untouched existing OSM buildings (search for <code>building=* -modified</code>).
+    3) Check <code>LM_BUILDING=*</code> for considering manual retagging of building types.
+    4) Check untouched existing OSM buildings (search for <code>building=* -modified -parent modified</code>).
     5) Check if entrances or other tagged nodes needs to be reconnected to the new buildings (search for <code>type:node ways:0 -untagged</code>).
   * Consider using _Edit->Purge_ in JOSM to work on a subset of a large municipality.
   * The _building_merge.py_ program may be run several times for the same municipality. Only buildings with a new _ref:lm_byggnad_ tag will be added each time.
