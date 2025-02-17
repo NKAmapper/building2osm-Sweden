@@ -19,7 +19,7 @@ from io import TextIOWrapper
 from io import BytesIO
 
 
-version = "0.8.3"
+version = "0.8.4"
 
 verbose = False				# Provides extra messages about polygon loading
 
@@ -456,22 +456,21 @@ def load_buildings(filename):
 	# Adjust building tagging according to size
 
 	for building in buildings.values():
+		tags = building['properties']
 		if (building['geometry']['type'] == "Polygon" 
-				and "building" in building['properties']
-				and building['properties']['building'] in ["garage", "farm_auxiliary", "house"]):
+				and "building" in tags
+				and "TYPE" in tags
+				and tags['TYPE'] in ["Småhus radhus", "Ekonomibyggnad", "Komplementbyggnad"]):
 
 			area = abs(polygon_area(building['geometry']['coordinates'][0]))
-			if building['properties']['building'] == "garage" and area > 100:
-				building['properties']['building'] = "garages"
+			if tags['TYPE'] in ["Ekonomibyggnad", "Komplementbyggnad"] and area < 15:
+				tags['building'] = "shed"
 
-			elif building['properties']['building'] in ["garage", "farm_auxiliary"] and area < 15:
-				building['properties']['building'] = "shed"
+			elif tags['TYPE'] == "Ekonomibyggnad" and area > 100:
+				tags['building'] = "barn"
 
-			elif building['properties']['building'] == "farm_auxiliary" and area > 100:
-				building['properties']['building'] = "barn"
-
-			elif building['properties']['building'] == "house" and area > 250:
-				building['properties']['building'] = "terrace"
+			elif tags['TYPE'] == "Småhus radhus" and area > 250:
+				tags['building'] = "terrace"
 
 	count_polygons = sum((building['geometry']['type'] == "Polygon") for building in buildings.values())
 	message ("\tLoaded %i building polygons\n" % count_polygons)
