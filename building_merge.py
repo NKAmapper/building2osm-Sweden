@@ -16,7 +16,7 @@ import urllib.request, urllib.parse
 from xml.etree import ElementTree as ET
 
 
-version = "0.10.1"
+version = "0.10.2"
 
 request_header = {"User-Agent": "building2osm"}
 
@@ -25,18 +25,27 @@ overpass_api = "https://overpass-api.de/api/interpreter"  # Overpass endpoint
 
 import_folder = "~/Jottacloud/osm/byggnader Sverige/"  # Folder containing import building files (default folder tried first)
 
-margin_hausdorff = 10.0	# Maximum deviation between polygons (meters)
-margin_tagged = 5.0		# Maximum deviation between polygons if building is tagged (meters)
+margin_hausdorff = 15.0	# Maximum deviation between polygons (meters)
+margin_tagged = 7.5		# Maximum deviation between polygons if building is tagged (meters)
 margin_area = 0.4       # At least 40% equal building areas
 
 remove_addr = False 	# Remove addr tags from buildings
 
-# No warnings when replacing these building tags with each other within same category
-#similar_buildings = {
-#	'residential': ["house", "detached", "semidetached_house", "terrace", "farm", "apartments", "residential", "cabin", "hut", "bungalow"],
-#	'commercial':  ["retail", "commercial", "warehouse", "industrial", "office"],
-#	'farm':        ["barn", "farm_auxiliary", "shed", "cabin"]
-#}
+lm_residential_tags = ["detached", "house", "terrace", "apartments"]  # Will override "residential"
+
+# Group of buildings types within which LM/OSM mismatch should not produce warning
+similar_buildings = {
+	'residential':	{"residential", "house", "detached", "apartments", "terrace", "allotment_house", "semidetached_house",
+					"cabin", "bungalow", "farm", "semi", "hut"},
+	'industrial':	{"industrial", "warehouse",  "storage_tank", "manufacture"},
+	'commercial':	{"commercial", "retail", "office", "hotel", "supermarket", "kiosk", "roof"},
+	'civic':		{"civic", "service", "hospital", "train_station", "parking", "public", "hangar", "dormitory", "toilets", "bunker",
+					"government", "transportation", "fire_station", "bridge", "museum", "roof"},
+	'school':		{"civic", "school", "kindergarten", "university", "college"},
+	'sport':		{"sports_hall", "sports_centre", "riding_hall"},
+	'regligious':	{"religious", "church", "chapel", "mosque"},
+	'farm':			{"barn", "farm_auxiliary", "greenhouse", "stable", "slurry_tank", "garages", "garage", "carport", "roof", "shed"}
+}
 
 debug = False 			# Output extra tags for debugging/testing
 
@@ -727,6 +736,18 @@ def swap_nodes(osm_way_nodes, import_coordinates):
 
 
 
+# Check whether building types belong to same category
+
+def similar_building_type(lm_building, osm_building):
+
+	for category in similar_buildings.values():
+		if lm_building in category and osm_building in category:
+			return True
+
+	return False
+
+
+
 # Add or modify building
 
 def add_building(building, osm_element):
@@ -745,34 +766,41 @@ def add_building(building, osm_element):
 
 		if osm_element is not None:
 
+			osm_tags = way_element['tags']
+			lm_tags = building['properties']
+
 			# Do not tag LM building description if not needed
 
-			if ("TYPE" in building['properties']
-					and (building['properties']['building'] == "yes"
-						or way_element['tags']['building'] == "yes"
-						or (way_element['tags']['building'] != building['properties']['building']))):
-					del building['properties']['TYPE']
+			lm_type = ""
+			if "TYPE" in lm_tags:
+				lm_type = lm_tags['TYPE']
+				del lm_tags['TYPE']
 
 			# Update tags
 
-			for key, value in iter(building['properties'].items()):
+			for key, value in iter(lm_tags.items()):
 
 				if key == "building":
-					if way_element['tags']['building'] == value or value == "yes":
-						continue  # Do not retag
-					elif way_element['tags']['building'] == "yes":
-						way_element['tags'][ key ] = value
-					else:
-						way_element['tags']['OSM_BUILDING'] = way_element['tags']['building']
-						way_element['tags'][ key ] = value
 
-				elif key in ["name", "alt_name"]:
-					if key in way_element['tags'] and way_element['tags'] == value:
-						way['element_tags'][ "LM_" + key ] = value
+					# LM overrides OSM
+					if (osm_tags['building'] == "yes"
+							or osm_tags['building'] == "residential" and value in lm_residential_tags
+							or osm_tags['building'] == "house" and value == "detached"
+							or osm_tags['building'] == "terrace" and value == "house"):
+						osm_tags['building'] = value
 
-				elif key in way_element['tags'] and way_element['tags'] == value:
-					way_element['tags'][ "OSM_" + key ] = way_element['tags'][ key ]
-					way_element['tags'][ key ] = value
+					# Produce "warning"/tag suggestion
+					elif (osm_tags['building'] != value
+								and value != "yes"  # Too vague
+								and "," not in lm_type
+								and not similar_building_type(lm_tags['building'], osm_tags['building'])):
+							osm_tags['LM_BUILDING'] = value
+							if lm_type:
+								osm_tags['TYPE'] = lm_type
+
+				# Produce information about LM name=* etc not used due to tag conflict
+				elif key in osm_tags and osm_tags[ key ] != value:
+					osm_tags[ "LM_" + key.upper() ] = value
 
 				else:
 					way_element['tags'][ key ] = value
@@ -780,9 +808,9 @@ def add_building(building, osm_element):
 			# Delete certain tags
 
 			delete_tags = ["building:type", "source", "source:date", "created_by"]
-			for tag in list(way_element['tags']):
-				if tag in delete_tags or remove_addr and tag[:5] == "addr:":
-					del way_element['tags'][ tag ]
+			for key in list(osm_tags):
+				if key in delete_tags or remove_addr and key[:5] == "addr:":
+					del osm_tags[ key ]
 
 		else:
 			way_element['tags'].update(building['properties'])
