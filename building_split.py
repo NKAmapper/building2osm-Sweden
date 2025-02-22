@@ -14,7 +14,7 @@ import os.path
 import urllib.request, urllib.parse
 
 
-version = "0.2.0"
+version = "0.2.1"
 
 overpass_api = "https://overpass-api.de/api/interpreter"  # Overpass endpoint
 #overpass_api = "https://overpass.kumi.systems/api/interpreter"
@@ -230,15 +230,15 @@ def mark_buildings(min_bbox, max_bbox, subdivision):
 				and min_bbox[0] <= building['centre'][0] <  max_bbox[0]
 				and min_bbox[1] <= building['centre'][1] <  max_bbox[1]):
 			building['properties']['PART'] = str(subdivision)
-			if "ref:lm_byggnad" in building['properties']:
-				marked_buildings.add(building['properties']['ref:lm_byggnad'])
+			if "ref:lantmateriet:byggnad" in building['properties']:
+				marked_buildings.add(building['properties']['ref:lantmateriet:byggnad'])
 
 	# Keep buildings with same ref to same box
 
 	for building in buildings:
 		if ("PART" not in building['properties']
-				and "ref:lm_byggnad" in building['properties']
-				and building['properties']['ref:lm_byggnad'] in marked_buildings):
+				and "ref:lantmateriet:byggnad" in building['properties']
+				and building['properties']['ref:lantmateriet:byggnad'] in marked_buildings):
 			building['properties']['PART'] = str(subdivision)
 
 
