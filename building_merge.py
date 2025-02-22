@@ -16,7 +16,7 @@ import urllib.request, urllib.parse
 from xml.etree import ElementTree as ET
 
 
-version = "0.10.2"
+version = "0.10.3"
 
 request_header = {"User-Agent": "building2osm"}
 
@@ -492,7 +492,7 @@ def load_import_buildings(filename):
 
 		# Remove uppercase import tags
 		for tag in list(building['properties']):
-			if tag == tag.upper() and tag != "TYPE":
+			if tag == tag.upper() and tag != "BTYPE":
 				del building['properties'][ tag ]
 
 	message ("\t%i buildings loaded\n" % len(import_buildings))
@@ -772,9 +772,9 @@ def add_building(building, osm_element):
 			# Do not tag LM building description if not needed
 
 			lm_type = ""
-			if "TYPE" in lm_tags:
-				lm_type = lm_tags['TYPE']
-				del lm_tags['TYPE']
+			if "BTYPE" in lm_tags:
+				lm_type = lm_tags['BTYPE']
+				del lm_tags['BTYPE']
 
 			# Update tags
 
@@ -796,7 +796,7 @@ def add_building(building, osm_element):
 								and not similar_building_type(lm_tags['building'], osm_tags['building'])):
 							osm_tags['LM_BUILDING'] = value
 							if lm_type:
-								osm_tags['TYPE'] = lm_type
+								osm_tags['BTYPE'] = lm_type
 
 				# Produce information about LM name=* etc not used due to tag conflict
 				elif key in osm_tags and osm_tags[ key ] != value:
@@ -862,7 +862,7 @@ def reverse_match(import_building):
 	for osm_building in osm_buildings:
 
 		if ("area" in osm_building
-				and "ref:lm_byggnad" not in osm_building['tags']
+				and "ref:lantmateriet:byggnad" not in osm_building['tags']
 				and min_bbox[0] < osm_building['center'][0] < max_bbox[0]
 				and min_bbox[1] < osm_building['center'][1] < max_bbox[1]):  # and "action" not in osm_building
 
@@ -897,16 +897,17 @@ def merge_buildings():
 
 	osm_refs = set()
 	for osm_element in osm_elements:
-		if "tags" in osm_element and "ref:lm_byggnad" in osm_element['tags']:
-			for ref in osm_element['tags']['ref:lm_byggnad'].split(";"):
+		if "tags" in osm_element and "ref:lantmateriet:byggnad" in osm_element['tags']:
+			for ref in osm_element['tags']['ref:lantmateriet:byggnad'].split(";"):
 				osm_refs.add(ref)
 
 	count_import = len(import_buildings)
 	import_buildings = [ building for building in import_buildings
-						if "ref:lm_byggnad" not in building['properties'] or building['properties']['ref:lm_byggnad'] not in osm_refs ]
+						if "ref:lantmateriet:byggnad" not in building['properties']
+							or building['properties']['ref:lantmateriet:byggnad'] not in osm_refs ]
 	count_existing = count_import - len(import_buildings)
 
-	message ("%i duplicate 'ref:lm_byggnad' found\n" % count_existing)
+	message ("%i duplicate 'ref:lantmateriet:byggnad' found\n" % count_existing)
 
 	# Loop osm buildings and attempt to find matching import buildings
 
@@ -918,9 +919,9 @@ def merge_buildings():
 		found_building = None
 		best_diff = 9999  # Dummy
 
-		# Skip test if ref:lm_byggnad exists (building has already been imported)
+		# Skip test if ref:lantmateriet:byggnad exists (building has already been imported)
 
-		if "ref:lm_byggnad" in osm_building['tags']:
+		if "ref:lantmateriet:byggnad" in osm_building['tags']:
 			count_ref += 1
 			continue
 
@@ -1005,16 +1006,17 @@ def extract_new_buildings():
 
 	osm_refs = set()
 	for osm_element in osm_elements:
-		if "tags" in osm_element and "ref:lm_byggnad" in osm_element['tags']:
-			for ref in osm_element['tags']['ref:lm_byggnad'].split(";"):
+		if "tags" in osm_element and "ref:lantmateriet:byggnad" in osm_element['tags']:
+			for ref in osm_element['tags']['ref:lantmateriet:byggnad'].split(";"):
 				osm_refs.add(ref)
 
 	count_import = len(import_buildings)
 	import_buildings = [ building for building in import_buildings
-						if "ref:lm_byggnad" not in building['properties'] or building['properties']['ref:lm_byggnad'] not in osm_refs ]
+						if "ref:lantmateriet:byggnad" not in building['properties']
+							or building['properties']['ref:lantmateriet:byggnad'] not in osm_refs ]
 	count_existing = count_import - len(import_buildings)
 
-	message ("%i duplicate 'ref:lm_byggnad' found\n" % count_existing)
+	message ("%i duplicate 'ref:lantmateriet:byggnad' found\n" % count_existing)
 
 	# Discover and add non-overlapping new buildings
 
@@ -1060,7 +1062,7 @@ def extract_new_buildings():
 				if ("polygon" in osm_building
 						and min_bbox[0] < osm_building['max_bbox'][0] and max_bbox[0] > osm_building['min_bbox'][0]
 						and min_bbox[1] < osm_building['max_bbox'][1] and max_bbox[1] > osm_building['min_bbox'][1]):
-						# and "ref:lm_byggnad" not in osm_building['tags']:
+						# and "ref:lantmateriet:byggnad" not in osm_building['tags']:
 
 					if polygon_overlap(import_building['geometry']['coordinates'][0], osm_building['polygon']):
 						new_building = False
