@@ -3,14 +3,14 @@ Tools for importing buildings in Sweden to OpenStreetMap
 
 ### building2osm
 
-Generates tagged geojson import file with building footprints.
+Downloads buildings from Geotorget and generates tagged geojson import file with building footprints.
 
 Usage:
 <code>python3 building2osm.py \<municipality\> [\<filename.geosjon\>] [-split] [-original] [-verify] [-debug]</code>
 
 Parameters:
 * _municipality_ - Name of the municipality to generate. Output for several municipalities if "Sweden" is given.
-* _filename.geojson_ - Optional file containing source data of buildings for municipality. First download GeoPackage file from Lantmäteriet, load into JOSM and save to geojson file. (This will be automated in later versions).
+* _filename.geojson_ - Optional file containing source data of buildings for municipality, otherwise automatic downloading from Geotorget.
 * <code>-split</code> - Also split output file into smaller subdivisions ("bydel", electoral or post districts).
 * <code>-original</code> - Produce file without any modifications.
 * <code>-verify</code> - Include extra tags for verification of topology modifications.
@@ -18,7 +18,7 @@ Parameters:
 
 ### building_merge
 
-Conflates the geojson import file with existing buildings in OSM and produces an OSM file for manual verification and uploading.
+Conflates the geojson import file with existing buildings in OSM and produces an OSM file for manual verification and uploading. First generate the import file with _building2osm.py_ or download from [OSM building import progress](https://wiki.openstreetmap.org/wiki/Import/Catalogue/Sweden_Building_Import/Progress).
 
 Usage:
 <code>python3 building_merge.py \<municipality\> [\<max distance\>] [\<filename.geojson\>] [-debug]</code>
@@ -61,7 +61,7 @@ Parameters:
     4) Check untouched existing OSM buildings (search for <code>building=* -modified -parent modified</code>).
     5) Check if entrances or other tagged nodes needs to be reconnected to the new buildings (search for <code>type:node ways:0 -untagged</code>).
   * Consider using _Edit->Purge_ in JOSM to work on a subset of a large municipality.
-  * The _building_merge.py_ program may be run several times for the same municipality. Only buildings with a new _ref:lm_byggnad_ tag will be added each time.
+  * The _building_merge.py_ program may be run several times for the same municipality. Only buildings with a new _ref:lantmateriet:byggnad_ tag will be added each time.
 
 ### Changelog
 * Added _building_split.py_.
