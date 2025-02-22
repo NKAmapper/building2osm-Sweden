@@ -2,9 +2,9 @@
 # -*- coding: utf8
 
 # buildings2osm
-# Converts buildings from the Norwegian cadastral registry to geosjon file for import to OSM.
+# Converts buildings from Lantmäteriet to geosjon file for import to OSM.
 # Usage: buildings2osm.py <municipality name> [-original] [-verify] [-debug]
-# Creates geojson file with name "bygninger_4222_Bykle.osm" etc.
+# Creates geojson file with name "byggnader_2181_Sandviken.geojson" etc.
 
 
 import sys
@@ -14,35 +14,35 @@ import math
 import statistics
 import csv
 import json
+import os
+import io
+import base64
 import urllib.request
-from io import TextIOWrapper
-from io import BytesIO
+import zipfile
 
 
-version = "0.8.4"
-
-verbose = False				# Provides extra messages about polygon loading
+version = "0.9.0"
 
 debug = False				# Add debugging / testing information
 verify = False				# Add tags for users to verify
 original = False			# Output polygons as in original data (no rectification/simplification)
 
-coordinate_decimals = 7		# Number of decimals in output
+precision = 7				# Number of decimals in coordinate output
+
+snap_margin = 0.2 			# Max margin for connecting building nodes/edges (meters)
 
 angle_margin = 8.0			# Max margin around angle limits, for example around 90 degrees corners (degrees)
-short_margin = 0.20			# Min length of short wall which will be removed if on "straight" line (meters)
+short_margin = 0.3			# Min length of short wall which will be removed if on "straight" line (meters)
 corner_margin = 1.0			# Max length of short wall which will be rectified even if corner is outside of 90 +/- angle_margin (meters)
-rectify_margin = 0.2		# Max relocation distance for nodes during rectification before producing information tag (meters)
+rectify_margin = 0.3		# Max relocation distance for nodes during rectification before producing information tag (meters)
 
-simplify_margin = 0.05		# Minimum tolerance for buildings with curves in simplification (meters)
+simplify_margin = 0.03		# Minimum tolerance for buildings with curves in simplification (meters)
 
 curve_margin_max = 40		# Max angle for a curve (degrees)
 curve_margin_min = 0.3		# Min angle for a curve (degrees)
 curve_margin_nodes = 3		# At least three nodes in a curve (number of nodes)
 
-addr_margin = 100			# Max margin for matching address point with building centre, for building levels info (meters)
-
-max_download = 10000		# Max features permitted for downloading by WFS per query
+spike_margin = 170			# Max angle/bearing for spikes (degrees)
 
 
 
@@ -198,7 +198,7 @@ def rotate_node (axis, r_angle, point):
 # Compute closest distance from point p3 to line segment [s1, s2].
 # Works for short distances.
 
-def line_distance(s1, s2, p3):
+def line_distance(s1, s2, p3, get_point=False):
 
 	x1, y1, x2, y2, x3, y3 = map(math.radians, [s1[0], s1[1], s2[0], s2[1], p3[0], p3[1]])
 
@@ -235,7 +235,10 @@ def line_distance(s1, s2, p3):
 	x = x4 - x3
 	y = y4 - y3
 	distance = 6371000 * math.sqrt( x*x + y*y )  # In meters
-	'''
+
+	if not get_point:
+		return distance
+
 	# Project back to longitude/latitude
 
 	x4 = x4 / math.cos(y4)
@@ -243,9 +246,8 @@ def line_distance(s1, s2, p3):
 	lon = math.degrees(x4)
 	lat = math.degrees(y4)
 
-	return (lon, lat, distance)
-	'''
-	return distance
+	return (lon, lat), distance
+
 
 
 
@@ -268,6 +270,25 @@ def simplify_polygon(polygon, epsilon):
 		new_polygon = [polygon[0], polygon[-1]]
 
 	return new_polygon
+
+
+
+# Produce bbox for polygon
+
+def get_bbox(polygon):
+
+	min_bbox = (min([ node[0] for node in polygon ]), min([ node[1] for node in polygon ]))
+	max_bbox = (max([ node[0] for node in polygon ]), max([ node[1] for node in polygon ]))
+	return min_bbox, max_bbox
+
+
+
+# Determine overlap between bbox
+
+def bbox_overlap(min_bbox1, max_bbox1, min_bbox2, max_bbox2):
+
+	return (min_bbox1[0] <= max_bbox2[0] and max_bbox1[0] >= min_bbox2[0]
+			and min_bbox1[1] <= max_bbox2[1] and max_bbox1[1] >= min_bbox2[1])
 
 
 
@@ -317,6 +338,30 @@ def get_municipality (parameter):
 
 
 
+# Get stored Geotorget token or ask for credentials
+
+def get_token():
+
+	token_filename = "geotorget_token.txt"
+	if os.path.isfile(token_filename):
+		file = open(token_filename)
+		token = file.read()
+		file.close()
+	else:
+		message ("Please provide Geotorget login (you need approval for 'Byggnad Nedladdning, vektor') ...\n")
+		username = input("\tUser name: ")
+		password = input("\tPassword:  ")
+		token = username + ":" + password
+		token = base64.b64encode(token.encode()).decode()
+		file = open(token_filename, "w")
+		file.write(token)
+		file.close()
+		message ("\n")
+
+	return token
+
+
+
 # Load conversion CSV table for tagging building types.
 
 def load_building_types():
@@ -345,25 +390,114 @@ def load_building_types():
 
 # Get municipality BBOX and kick off recursive splitting into smaller BBOX quadrants
 
-def load_buildings(filename):
+def load_buildings(municipality_id, filename=""):
 
 	message ("Load building polygons ...\n")
 
-	# Load buildings
+	# Load GeoJSON file
 
-	message ("\tLoading '%s' ...\n" % filename)
-	file = open(filename)
-	data = json.load(file)
-	file.close()
+	if filename:
+		if not os.path.isfile(filename):
+			sys.exit("\t*** File not found\n\n")
+		elif ".geojson" not in filename:
+			sys.exit("\t*** Please provide a GeoJSON file\n\n")
 
-	not_found = []
+		message ("\tLoading from file '%s' ...\n" % filename)
 
-	for building in data['features']:
+		file = open(filename)
+		data = json.load(file)
+		file.close()
+
+		# Standardise geometry to Polygon
+
+		for feature in data['features']:
+			if feature['geometry']['type'] == "MultiPolygon":
+				coordinates = feature['geometry']['coordinates'][0]  # One outer area only
+			elif feature['geometry']['type'] == "Polygon":
+				coordinates = feature['geometry']['coordinates']
+			elif feature['geometry']['type'] == "LineString":
+				coordinates = [ feature['geometry']['coordinates'] ]
+			else:
+				coordinates = []
+
+			if coordinates and len(coordinates[0]) > 3:
+				for i, polygon in enumerate(coordinates):
+					coordinates[ i ] = [ tuple(( round(node[0], precision), round(node[1], precision) )) for node in polygon ]
+
+				feature['geometry']['type'] = "Polygon"
+				feature['geometry']['coordinates'] = coordinates
+				buildings.append(feature)
+
+	# Load GeoPackage file
+
+	else:
+		# Import GeoPandas for Geopackage loading
+
+		from geopandas import gpd
+		import warnings
+
+		warnings.filterwarnings(
+		    action="ignore",
+		    message=".*has GPKG application_id, but non conformant file extension.*"
+		)
+
+		# Load from Geotorget
+
+		message ("\tLoading from Lantmäteriet ...\n")
+
+		header = { 'Authorization': 'Basic ' +  token }
+		url = "https://dl1.lantmateriet.se/byggnadsverk/byggnad_kn%s.zip" % municipality_id
+		filename = "byggnad_kn%s.gpkg" % municipality_id
+
+		request = urllib.request.Request(url, headers = header)
+		file_in = urllib.request.urlopen(request)
+		zip_file = zipfile.ZipFile(io.BytesIO(file_in.read()))
+		file = zip_file.open(filename)
+
+		gdf = gpd.read_file(file)
+
+		file.close()
+		zip_file.close()
+		file_in.close()
+
+		# Transform to GeoJSON format
+
+		gdf = gdf.to_crs("EPSG:4326")  # Transform projection from EPSG:3006
+		gdf['versiongiltigfran'] = gdf['versiongiltigfran'].dt.strftime("%Y-%m-%d")  # Fix type
+
+		for feature in gdf.iterfeatures(na="drop", drop_id=True):
+			if isinstance(feature['geometry']['coordinates'][0][0], float):  # LineString
+				coordinates = [ feature['geometry']['coordinates'] ]
+			elif isinstance(feature['geometry']['coordinates'][0][0][0], float):  # Polygon
+				coordinates = feature['geometry']['coordinates']
+			elif isinstance(feature['geometry']['coordinates'][0][0][0][0], float):  # Multipolygon
+				coordinates = feature['geometry']['coordinates'][0]
+			else:
+				coordinates = []
+
+			if coordinates and len(coordinates[0]) > 3:
+				feature['geometry']['coordinates'] = [ [ (round(node[0], precision), round(node[1], precision))
+														for node  in polygon ] for polygon in coordinates ]
+				feature['geometry']['type'] = "Polygon"
+				buildings.append(feature)
+
+	# Iterate all buildings and assign tags
+
+	building_refs = {}  # Index - list of buildings with same ref
+	not_found = []  # Purpose in dataset not defined
+
+	for building in buildings:
 		properties = building['properties']
 		tags = {}
 
+		# Get identifier, unique if house number added
+
 		ref = properties['objektidentitet']
-		tags['ref:lm_byggnad'] = ref
+		tags['ref:lantmateriet:byggnad'] = ref
+#		house_ref = ""
+#		if "husnummer" in properties and properties['husnummer']:
+#			house_ref = str(int(properties['husnummer']))
+#			tags['ref:lantmateriet:byggnad'] += ":" + house_ref
 
 		# Determine building type and add building tag
 
@@ -392,9 +526,25 @@ def load_buildings(filename):
 			type_description = ", ".join([ building_types[ building_type ]['name']
 											for building_type in building_type_list if building_type in building_types ] )
 			if type_description:
-				tags['TYPE'] = type_description
+				tags['BTYPE'] = type_description
 
-		# Add other information
+		# Adjust building=* based on size
+
+		if (building['geometry']['type'] == "Polygon"
+				and "BTYPE" in tags
+				and tags['BTYPE'] in ["Småhus radhus", "Ekonomibyggnad", "Komplementbyggnad"]):
+
+			area = abs(polygon_area(building['geometry']['coordinates'][0]))
+			if tags['BTYPE'] in ["Ekonomibyggnad", "Komplementbyggnad"] and area < 15:
+				tags['building'] = "shed"
+
+			elif tags['BTYPE'] == "Ekonomibyggnad" and area > 100:
+				tags['building'] = "barn"
+
+			elif tags['BTYPE'] == "Småhus radhus" and area > 250:
+				tags['building'] = "terrace"
+
+		# Add extra information
 
 		if "byggnadsnamn1" in properties and properties['byggnadsnamn1']:
 			tags['name'] = properties['byggnadsnamn1']
@@ -403,207 +553,304 @@ def load_buildings(filename):
 			if "byggnadsnamn3" in properties and properties['byggnadsnamn3']:
 				tags['alt_name'] += ";" + properties['byggnadsnamn3']
 
-		if "husnummer" in properties and properties['husnummer']:
-			tags['HOUSE_REF'] = str(properties['husnummer'])
-
 		if "versiongiltigfran" in properties and properties['versiongiltigfran']:
 			tags['DATE'] = properties['versiongiltigfran'][:10]
 			if "objektversion" in properties and properties['objektversion']:
 				tags['DATE'] += " v" + str(properties['objektversion'])
 
-		if "ursprunglig_organisation" in properties and properties['ursprunglig_organisation']:
-			tags['SOURCE'] = properties['ursprunglig_organisation'][0].upper() + properties['ursprunglig_organisation'][1:]
+#		if "ursprunglig_organisation" in properties and properties['ursprunglig_organisation']:
+#			tags['SOURCE'] = properties['ursprunglig_organisation'][0].upper() + properties['ursprunglig_organisation'][1:]
 
-		if "huvudbyggnad" in properties and properties['huvudbyggnad'] == "Ja":
-			tags['MAIN'] = "yes"
+#		if "huvudbyggnad" in properties and properties['huvudbyggnad'] == "Ja":
+#			tags['MAIN'] = "yes"
 
-		# Standardise geometry to Polygon
+		building['properties'] = tags
 
-		if building['geometry']['type'] == "MultiPolygon":
-			coordinates = building['geometry']['coordinates'][0]  # One outer area only
-		elif building['geometry']['type'] == "Polygon":
-			coordinates = building['geometry']['coordinates']
-		elif building['geometry']['type'] == "LineString":
-			coordinates = [ building['geometry']['coordinates'] ]
+		# Mark if multiple buildings have same ref
+
+		if ref in building_refs:
+			if len(building_refs[ ref ]) == 1:
+				building_refs[ ref ][0]['properties']['MULTI'] = "yes"
+			building['properties']['MULTI'] = "yes"
+			building_refs[ ref ].append(building)
+
 		else:
-			coordinates = []
+			building_refs[ ref ] = [ building ]
 
-		# Convert nodes to tuples
-		for i, polygon in enumerate(coordinates):
-			coordinates[ i ] = [ tuple(node) for node in polygon ]
+	# Check for duplicate nodes
+	verify_building_geometry()
 
-		feature = {
-			"type": "Feature",
-			"geometry": {
-				"type": "Polygon",
-				"coordinates": coordinates
-			},
-			"properties": tags
-		}
-
-		if coordinates:
-			# Ensure unique ref for body parts
-			main_ref = ref
-			sub_ref = 1
-			while ref in buildings:
-				sub_ref += 1
-				ref = main_ref + ":" + str(sub_ref)
-			if sub_ref > 1:
-				buildings[ main_ref ]['properties']['MULTI'] = "1"
-				feature['properties']['MULTI'] = str(sub_ref)
-			buildings[ ref ] = feature
-
-	# Adjust building tagging according to size
-
-	for building in buildings.values():
-		tags = building['properties']
-		if (building['geometry']['type'] == "Polygon" 
-				and "building" in tags
-				and "TYPE" in tags
-				and tags['TYPE'] in ["Småhus radhus", "Ekonomibyggnad", "Komplementbyggnad"]):
-
-			area = abs(polygon_area(building['geometry']['coordinates'][0]))
-			if tags['TYPE'] in ["Ekonomibyggnad", "Komplementbyggnad"] and area < 15:
-				tags['building'] = "shed"
-
-			elif tags['TYPE'] == "Ekonomibyggnad" and area > 100:
-				tags['building'] = "barn"
-
-			elif tags['TYPE'] == "Småhus radhus" and area > 250:
-				tags['building'] = "terrace"
-
-	count_polygons = sum((building['geometry']['type'] == "Polygon") for building in buildings.values())
+	count_polygons = sum((building['geometry']['type'] == "Polygon") for building in buildings)
 	message ("\tLoaded %i building polygons\n" % count_polygons)
 	if not_found:
 		message ("\t*** Building type(s) not found: %s\n" % (", ".join(sorted([ purpose for purpose in not_found ]))))
 
 
 
-# Simplify polygon
-# Remove redundant nodes, i.e. nodes on (almost) staight lines
+# Check for duplicate nodes, "spike" nodes (sharp angles) and segments
 
-def simplify_buildings():
+def verify_building_geometry():
 
-	message ("Simplify polygons ...\n")
-	message ("\tSimplification factor: %.2f m (curve), %i degrees (line)\n" % (simplify_margin, angle_margin))
+	# Check for duplicate nodes
 
-	# Make dict of all nodes with count of usage
+	count_nodes = 0
+	for building in buildings:
+		for i, polygon in enumerate(building['geometry']['coordinates']):
+			if len(polygon) != len(set(polygon)) + 1:
+				new_polygon = []
+				last_node = None
+				for node in polygon:
+					if node != last_node:
+						new_polygon.append(node)
+					last_node = node
+				if new_polygon != polygon:
+					building['geometry']['coordinates'][ i ] = new_polygon
+					count_nodes += 1
 
-	count = 0
+	# Check for duplicate segments
+
+	count_segments = 0
+	for building in buildings:
+		for i, polygon in enumerate(building['geometry']['coordinates']):	
+			if len(polygon) != len(set(polygon)) + 1:
+				found = True
+				new_polygon = polygon[1:]
+				while found and len(new_polygon) > 2:   # Iterate until no adjustment
+
+					found = False
+					for j in range(1, len(new_polygon) - 1):
+						if new_polygon[ j - 1 ] == new_polygon[ j + 1 ]:
+							remove_nodes.add(new_polygon[ j ])
+							new_polygon = new_polygon[ : j - 1 ] + new_polygon[ j + 1 : ]
+							found = True
+							break
+
+					if not found:
+						# Special case: Duplicate segment wrapped around start/end of polygon
+						if new_polygon[-1] == new_polygon[1]:
+							remove_nodes.add(new_polygon[0])
+							new_polygon = new_polygon[1:-1]
+							found = True
+						elif new_polygon[-2] == new_polygon[0]:
+							remove_nodes.add(new_polygon[-1])
+							new_polygon = new_polygon[:-2]
+							found = True
+
+				if new_polygon:
+					new_polygon = [ new_polygon[-1] ] + new_polygon
+
+				if new_polygon != polygon:
+					building['geometry']['coordinates'][ i ] = new_polygon
+					count_segments += 1
+
+	# Check for sharp angles ("spike" nodes)
+
+	count_spikes = 0
+	for building in buildings:
+		for i, polygon in enumerate(building['geometry']['coordinates']):
+			found = True
+			new_polygon = polygon[1:]
+			while found and len(new_polygon) > 2:  # Iterate until no adjustment
+
+				found = False
+				for j in range(1, len(new_polygon) - 1):
+					if abs(bearing_turn(new_polygon[ j - 1 ], new_polygon[ j ], new_polygon[ j + 1 ])) > spike_margin:
+						remove_nodes.add(new_polygon[ j ])
+						new_polygon = new_polygon[ : j ] + new_polygon[ j + 1 : ]
+						found = True
+						break
+
+				if not found:
+					# Special case: Spike wrapped around start/end of polygon
+					if abs(bearing_turn(new_polygon[-1], new_polygon[0], new_polygon[1])) > spike_margin:
+						remove_nodes.add(new_polygon[0])
+						new_polygon = new_polygon[1:]
+						found = True
+					elif abs(bearing_turn(new_polygon[-2], new_polygon[-1], new_polygon[0])) > spike_margin:
+						remove_nodes.add(new_polygon[-1])
+						new_polygon = new_polygon[:-1]
+						found = True
+
+			if new_polygon:
+				new_polygon = [ new_polygon[-1] ] + new_polygon
+
+			if new_polygon != polygon:
+				building['geometry']['coordinates'][ i ] = new_polygon
+				count_spikes += 1
+
+	# Check if polygons are not conform
+
+	count_remove = 0
+	for building in buildings[:]:
+		for polygon in building['geometry']['coordinates'][:]:
+			if len(polygon) < 4:
+				building['geometry']['coordinates'].remove(polygon)
+		if not building['geometry']['coordinates']:
+			buildings.remove(building)
+			count_remove += 1
+		else:
+			for polygon in building['geometry']['coordinates']:
+				if polygon[0] != polygon[-1]:
+					print (str(building))
+
+#	message ("\tRemoved %i duplicate nodes, %i duplicate segments and %i 'spike' corners\n" % (count_nodes, count_segments, count_spikes))
+#	if count_remove > 0:
+#		message ("\tRemoved %i buildings\n" % count_remove)
+
+
+
+# Connect building edges which are partly connected or very close
+
+def connect_buildings():
+
+	# Internal function which identifies connection points and produces connection
+
+	def connect_buildings_in_box(min_bbox, max_bbox):
+
+		nonlocal count_down
+
+		# Internal function which updates node after connection, including for all buildings which share that node
+
+		def update_node(old_node, new_node):
+
+			nodes[ old_node ] -= 1
+			if new_node not in nodes:
+				nodes[ new_node ] = 0
+			nodes[ new_node ] += 1
+
+			if nodes[ old_node ] > 0:
+				for building in box_buildings:
+					for polygon in building['geometry']['coordinates']:
+						if old_node in polygon:
+							for i, node in enumerate(polygon):
+								if node == old_node:
+									polygon[ i ] = new_node
+
+		# Start of connect_buildings_in_box
+		# First identify all buildings overlapping with bbox
+
+		count = 0
+		box_buildings = []
+		for building in buildings:
+			if (building['geometry']['type'] == "Polygon"
+					and bbox_overlap(min_bbox, max_bbox, building['min_bbox'], building['max_bbox'])):
+				box_buildings.append(building)
+
+		# Iterate over potential building pairs which may need connection.
+		# Only outer ways.
+
+		for i1, building1 in enumerate(box_buildings):
+			count_down -= 1
+			if count_down > 0:
+				message ("\r\t%i " % count_down)
+
+			polygon1 = building1['geometry']['coordinates'][0]
+			for i2, building2 in enumerate(box_buildings):
+				if i1 == i2:
+					continue
+
+				polygon2 = building2['geometry']['coordinates'][0]
+
+				if bbox_overlap(building1['min_bbox'], building1['max_bbox'], building2['min_bbox'], building2['max_bbox']):
+
+					# Iterate over nodes of both buildings to identify potential connection points
+
+					for n1 in range(len(polygon1) - 1):
+						node1 = polygon1[ n1 ]
+						if node1 not in polygon2:
+							for n2 in range(len(polygon2) - 1):
+
+								# Connect point to edge of the other building
+
+								new_node, dist = line_distance(polygon2[ n2 ], polygon2[ n2 + 1 ], node1, get_point=True)
+								if dist < snap_margin:
+									count += 1
+									new_node = ( round(new_node[0], precision), round(new_node[1], precision) )
+
+									if new_node in nodes:  # Reuse node already existing at that point
+										polygon1[ n1 ] = new_node
+										if new_node not in polygon2:
+											polygon2.insert(n2 + 1, new_node)
+										update_node(node1, new_node)
+
+									elif distance(node1, polygon2[ n2 ]) < snap_margin:  # Snap to close edge node 1
+										polygon1[ n1 ] = polygon2[ n2 ]
+										update_node(node1, polygon2[ n2 ])
+
+									elif distance(node1, polygon2[ n2 + 1 ]) < snap_margin:  # Snap to close edge node 2
+										polygon1[ n1 ] = polygon2[ n2 + 1 ]
+										update_node(node1, polygon2[ n2 + 1 ])
+
+									else:
+										polygon1[ n1 ] = new_node  # Create new node
+										polygon2.insert(n2 + 1, new_node)
+										update_node(node1, new_node)
+									break
+		return count
+
+
+	# Inner recursive function which gradually splits bbox until number of buildings inside is sufficiently small
+
+	def connect_box(min_bbox, max_bbox, level):
+
+		# Determine number of buildings inside box
+
+		inside_box = 0
+		for building in buildings:
+			if bbox_overlap(min_bbox, max_bbox, building['min_bbox'], building['max_bbox']):
+				inside_box += 1
+
+		# Stop recurse if count is sufficiently small
+
+		if inside_box <= 1000:
+			return connect_buildings_in_box(min_bbox, max_bbox)
+
+		# Recurse to get fewer buildings per box. Split along longest axis (x or y) and recurse
+
+		else:
+			if distance((min_bbox[0], max_bbox[1]), max_bbox) > distance(min_bbox, (min_bbox[0], max_bbox[1])):  # x longer than y
+				# Split x axis
+				half_x = 0.5 * (max_bbox[0] + min_bbox[0])
+				return connect_box(min_bbox, (half_x, max_bbox[1]), level + 1) + connect_box((half_x, min_bbox[1]), max_bbox, level + 1)
+			else:
+				# Split y axis
+				half_y = 0.5 * (max_bbox[1] + min_bbox[1])
+				return connect_box(min_bbox, (max_bbox[0], half_y), level + 1) + connect_box((min_bbox[0], half_y), max_bbox, level + 1)
+
+
+	# Start of main function
+
+	message ("Connect close polygons ...\n")
+	message ("\tMinimum distance: %.2f m\n" % snap_margin)
+
+	# Make dict of all nodes with count of usage + get building centre
+
+	count_down = 0
 	nodes = {}
-	for ref, building in iter(buildings.items()):
+	for building in buildings:
 		if building['geometry']['type'] == "Polygon":
+			count_down += 1
+			building['min_bbox'], building['max_bbox'] = get_bbox(building['geometry']['coordinates'][0])
 			for polygon in building['geometry']['coordinates']:
 				for node in polygon:
 					if node not in nodes:
 						nodes[ node ] = 1
 					else:
 						nodes[ node ] += 1
-						count += 1
+		else:
+			message (str(building))
 
-	message ("\t%i nodes used by more than one building\n" % count)
+	min_bbox = (min([ building['min_bbox'][0] for building in buildings ]),
+				min([ building['min_bbox'][1] for building in buildings ]))
+	max_bbox = (max([ building['max_bbox'][0] for building in buildings ]),
+				max([ building['max_bbox'][1] for building in buildings ]))
 
-	# Identify redundant nodes, i.e. nodes on an (almost) straight line
+	# Start recursive partitioning of buildings into smaller boxes
+	count = connect_box (min_bbox, max_bbox, 0)
 
-	count = 0
-	for ref, building in iter(buildings.items()):
-		if building['geometry']['type'] == "Polygon" and ("rectified" not in building or building['rectified'] == "no"):
+	message ("\r\tConnected %i building edges\n" % count)
 
-			for polygon in building['geometry']['coordinates']:
-
-				# First discover curved walls, to keep more detail
-
-				curves = set()
-				curve = set()
-				last_bearing = 0
-
-				for i in range(1, len(polygon) - 1):
-					new_bearing = bearing_turn(polygon[i-1], polygon[i], polygon[i+1])
-
-					if math.copysign(1, last_bearing) == math.copysign(1, new_bearing) and curve_margin_min < abs(new_bearing) < curve_margin_max:
-						curve.add(i - 1)
-						curve.add(i)
-						curve.add(i + 1)
-					else:
-						if len(curve) > curve_margin_nodes + 1:
-							curves = curves.union(curve)
-						curve = set()
-					last_bearing = new_bearing
-
-				if len(curve) > curve_margin_nodes + 1:
-					curves = curves.union(curve)
-
-				if curves:
-					building['properties']['VERIFY_CURVE'] = str(len(curves))
-					count += 1
-
-				# Then simplify polygon
-
-				if curves:
-					# Light simplification for curved buildings
-
-					new_polygon = simplify_polygon(polygon, simplify_margin)
-
-					# Check if start node could be simplified
-					if line_distance(new_polygon[-2], new_polygon[1], new_polygon[0]) < simplify_margin:
-						new_polygon = new_polygon[1:-1] + [ new_polygon[1] ]
-#						building['properties']['VERIFY_SIMPLIFY_FIRST'] = "yes"
-
-					if len(new_polygon) < len(polygon):
-						building['properties']['VERIFY_SIMPLIFY_CURVE'] = str(len(polygon) - len(new_polygon))
-						for node in polygon:
-							if node not in new_polygon:
-								nodes[ node ] -= 1
-				else:
-					# Simplification for buildings without curves
-
-					last_node = polygon[-2]
-					for i in range(len(polygon) - 1):
-						angle = bearing_turn(last_node, polygon[i], polygon[i+1])
-						length = distance(polygon[i], polygon[i+1])
-
-						if (abs(angle) < angle_margin or \
-							length < short_margin and \
-								(abs(angle) < 40 or \
-								abs(angle + bearing_turn(polygon[i], polygon[i+1], polygon[(i+2) % (len(polygon)-1)])) < angle_margin) or \
-							length < corner_margin and abs(angle) < 2 * angle_margin):
-
-							nodes[ polygon[i] ] -= 1
-							if angle > angle_margin - 2:
-								building['properties']['VERIFY_SIMPLIFY_LINE'] = "%.1f" % abs(angle)
-						else:
-							last_node = polygon[i]
-					
-	if debug or verify:
-		message ("\tIdentified %i buildings with curved walls\n" % count)
-
-	# Create set of nodes which may be deleted without conflicts
-
-	already_removed = len(remove_nodes)
-	for node in nodes:
-		if nodes[ node ] == 0:
-			remove_nodes.add(node)
-
-	# Remove nodes from polygons
-
-	count_building = 0
-	count_remove = 0
-	for ref, building in iter(buildings.items()):
-		if building['geometry']['type'] == "Polygon":
-			removed = False
-			for polygon in building['geometry']['coordinates']:
-				for node in polygon[:-1]:
-					if node in remove_nodes:
-						i = polygon.index(node)
-						polygon.pop(i)
-						count_remove += 1
-						removed = True
-						if i == 0:
-							polygon[-1] = polygon[0]
-			if removed:
-				count_building += 1
-
-	message ("\tRemoved %i redundant nodes in %i buildings\n" % (count_remove, count_building))
+	verify_building_geometry()
 
 
 
@@ -636,25 +883,31 @@ def rectify_buildings():
 	message ("\tThreshold for square corners: 90 +/- %i degrees\n" % angle_margin)
 	message ("\tMinimum length of wall: %.2f meters\n" % short_margin)
 
+	# Create dict of building list to get view
+
+	buildings_index = {}
+	for i, building in enumerate(buildings):
+		buildings_index[ i ] = building
+
 	# First identify nodes used by more than one way (usage > 1)
 
 	count = 0
 	nodes = {}
-	for ref, building in iter(buildings.items()):
+	for ref, building in iter(buildings_index.items()):
 		if building['geometry']['type'] == "Polygon":
 			for polygon in building['geometry']['coordinates']:
 				for node in polygon[:-1]:
 					if node not in nodes:
 						nodes[ node ] = {
 							'use': 1,
-							'parents': [building]
+							'parents': [ ref ]
 						}
 					else:
 						nodes[ node ]['use'] += 1
-						if building not in nodes[ node ]['parents']:
-							nodes[ node ]['parents'].append( building )
+						if ref not in nodes[ node ]['parents']:
+							nodes[ node ]['parents'].append( ref)
 						count += 1
-			building['neighbours'] = [ building ]
+			building['neighbours'] = [ ref ]
 
 	# Add list of neighbours to each building (other buildings which share one or more node)
 
@@ -662,21 +915,21 @@ def rectify_buildings():
 		if node['use'] > 1:
 			for parent in node['parents']:
 				for neighbour in node['parents']:
-					if neighbour not in parent['neighbours']:
-						parent['neighbours'].append(neighbour)  # Including self
+					if neighbour not in buildings_index[ parent ]['neighbours']:
+						buildings_index[ parent ]['neighbours'].append(neighbour)  # Including self
 
-	message ("\t%i nodes used by more than one building\n" % count)
+#	message ("\t%i nodes used by more than one building\n" % count)
 
 	# Then loop buildings and rectify where possible.
 
 	count_rectify = 0
 	count_not_rectify = 0
 	count_remove = 0
-	count = 0
+	count = len(buildings)
 
-	for ref, building_test in iter(buildings.items()):
+	for ref, building_test in iter(buildings_index.items()):
 
-		count += 1
+		count -= 1
 		message ("\r\t%i " % count)
 
 		if building_test['geometry']['type'] != "Polygon" or "rectified" in building_test:
@@ -687,7 +940,7 @@ def rectify_buildings():
 		building_group = []
 		check_neighbours = building_test['neighbours']  # includes self
 		while check_neighbours:
-			for neighbour in check_neighbours[0]['neighbours']:
+			for neighbour in buildings_index[ check_neighbours[0] ]['neighbours']:
 				if neighbour not in building_group and neighbour not in check_neighbours:
 					check_neighbours.append(neighbour)
 			building_group.append(check_neighbours[0])
@@ -695,6 +948,9 @@ def rectify_buildings():
 
 		if len(building_group) > 1:
 			building_test['properties']['VERIFY_GROUP'] = str(len(building_group)) 
+
+		# Transform index to building object
+		building_group = [ buildings_index[ i ] for i in building_group ]
 
 		# 2. Then build data structure for rectification process.
 		# "walls" will contain all (almost) straight segments of the polygons in the group.
@@ -933,7 +1189,7 @@ def rectify_buildings():
 
 		for node, corner in iter(corners.items()):
 			corner['new_node'] = rotate_node(axis, - avg_bearing, corner['new_node'])
-			corner['new_node'] = ( round(corner['new_node'][0], coordinate_decimals), round(corner['new_node'][1], coordinate_decimals) )
+			corner['new_node'] = ( round(corner['new_node'][0], precision), round(corner['new_node'][1], precision) )
 
 		# 9. Construct new polygons
 
@@ -979,11 +1235,142 @@ def rectify_buildings():
 	message ("\t%i buildings rectified\n" % count_rectify)
 	message ("\t%i buildings could not be rectified\n" % count_not_rectify)
 
+	verify_building_geometry()
+
+
+# Simplify polygon
+# Remove redundant nodes, i.e. nodes on (almost) staight lines
+
+def simplify_buildings():
+
+	message ("Simplify polygons ...\n")
+	message ("\tSimplification factor: %.2f m (curve), %i degrees (line)\n" % (simplify_margin, angle_margin))
+
+	# Make dict of all nodes with count of usage
+
+	count = 0
+	nodes = {}
+	for building in buildings:
+		if building['geometry']['type'] == "Polygon":
+			for polygon in building['geometry']['coordinates']:
+				for node in polygon:
+					if node not in nodes:
+						nodes[ node ] = 1
+					else:
+						nodes[ node ] += 1
+						count += 1
+
+#	message ("\t%i nodes used by more than one building\n" % count)
+
+	# Identify redundant nodes, i.e. nodes on an (almost) straight line
+
+	count = 0
+	for building in buildings:
+		if building['geometry']['type'] == "Polygon" and ("rectified" not in building or building['rectified'] == "no"):
+
+			for polygon in building['geometry']['coordinates']:
+
+				# First discover curved walls, to keep more detail
+
+				curves = set()
+				curve = set()
+				last_bearing = 0
+
+				for i in range(1, len(polygon) - 1):
+					new_bearing = bearing_turn(polygon[i-1], polygon[i], polygon[i+1])
+
+					if math.copysign(1, last_bearing) == math.copysign(1, new_bearing) and curve_margin_min < abs(new_bearing) < curve_margin_max:
+						curve.add(i - 1)
+						curve.add(i)
+						curve.add(i + 1)
+					else:
+						if len(curve) > curve_margin_nodes + 1:
+							curves = curves.union(curve)
+						curve = set()
+					last_bearing = new_bearing
+
+				if len(curve) > curve_margin_nodes + 1:
+					curves = curves.union(curve)
+
+				if curves:
+					building['properties']['VERIFY_CURVE'] = str(len(curves))
+					count += 1
+
+				# Then simplify polygon
+
+				if curves:
+					# Light simplification for curved buildings
+
+					new_polygon = simplify_polygon(polygon, simplify_margin)
+
+					# Check if start node could be simplified
+					if line_distance(new_polygon[-2], new_polygon[1], new_polygon[0]) < simplify_margin:
+						new_polygon = new_polygon[1:-1] + [ new_polygon[1] ]
+#						building['properties']['VERIFY_SIMPLIFY_FIRST'] = "yes"
+
+					if len(new_polygon) < len(polygon):
+						building['properties']['VERIFY_SIMPLIFY_CURVE'] = str(len(polygon) - len(new_polygon))
+						for node in polygon:
+							if node not in new_polygon:
+								nodes[ node ] -= 1
+				else:
+					# Simplification for buildings without curves
+
+					last_node = polygon[-2]
+					for i in range(len(polygon) - 1):
+						angle = bearing_turn(last_node, polygon[i], polygon[i+1])
+						length = distance(polygon[i], polygon[i+1])
+
+						if (abs(angle) < angle_margin or \
+							length < short_margin and \
+								(abs(angle) < 40 or \
+								abs(angle + bearing_turn(polygon[i], polygon[i+1], polygon[(i+2) % (len(polygon)-1)])) < angle_margin) or \
+							length < corner_margin and abs(angle) < 2 * angle_margin):
+
+							nodes[ polygon[i] ] -= 1
+							if angle > angle_margin - 2:
+								building['properties']['VERIFY_SIMPLIFY_LINE'] = "%.1f" % abs(angle)
+						else:
+							last_node = polygon[i]
+					
+	if debug or verify:
+		message ("\tIdentified %i buildings with curved walls\n" % count)
+
+	# Create set of nodes which may be deleted without conflicts
+
+	already_removed = len(remove_nodes)
+	for node in nodes:
+		if nodes[ node ] == 0:
+			remove_nodes.add(node)
+
+	# Remove nodes from polygons
+
+	count_building = 0
+	count_remove = 0
+	for building in buildings:
+		if building['geometry']['type'] == "Polygon":
+			removed = False
+			for polygon in building['geometry']['coordinates']:
+				for node in polygon[:-1]:
+					if node in remove_nodes:
+						i = polygon.index(node)
+						polygon.pop(i)
+						count_remove += 1
+						removed = True
+						if i == 0:
+							polygon[-1] = polygon[0]
+			if removed:
+				count_building += 1
+
+	message ("\tRemoved %i redundant nodes in %i buildings\n" % (count_remove, count_building))
+
 
 
 # Output geojson file
 
 def save_buildings(filename):
+
+	verify_building_geometry()
 
 	if debug:
 		filename = filename.replace(".geojson", "_debug.geojson")
@@ -1003,8 +1390,8 @@ def save_buildings(filename):
 	# Prepare buildings to fit geosjon data structure
 
 	count = 0
-	for ref, building in iter(buildings.items()):
-		if building['geometry']['coordinates']:
+	for building in buildings:
+		if building['geometry']['coordinates'] and len(set(building['geometry']['coordinates'][0])) > 2:
 			count += 1
 
 			# Delete temporary data
@@ -1016,7 +1403,7 @@ def save_buildings(filename):
 			if not debug or not verify:
 				for key in list(building['properties'].keys()):
 					if key == key.upper() and (not verify and "VERIFY_" in key or not debug and "DEBUG_" in key): 
-#							and key not in ['TYPE', 'STATUS', 'DATE', 'MAIN', 'HOUSE_REF']
+#							and key not in ['BTYPE', 'DATE', 'MAIN']
 						del building['properties'][key]
 			features['features'].append(building)
 
@@ -1044,33 +1431,29 @@ def save_buildings(filename):
 
 
 
-def process_municipality(municipality_id, municipality_name, input_filename=""):
+def process_municipality(municipality_id, input_filename=""):
 
 	mun_start_time = time.time()
-	message ("Municipality: %s %s\n\n" % (municipality_id, municipality_name))
+	message ("Municipality: %s %s\n\n" % (municipality_id, municipalities[ municipality_id ]))
 
 	buildings.clear()
-	neighbour_buildings.clear()
-	dwellings.clear()
 	remove_nodes.clear()
 
-	filename = input_filename
-	if not filename:
-		filename = "byggnad_kn%s.geojson" % municipality_id
-	load_buildings(filename)
+	load_buildings(municipality_id, input_filename)
 
 	if len(buildings) > 0:
 		if not original:
+			connect_buildings()
 			rectify_buildings()
 			simplify_buildings()
 
-		filename = "byggnader_%s_%s.geojson" % (municipality_id, municipalities[municipality_id].replace(" ", "_"))
+		filename = "byggnader_%s_%s.geojson" % (municipality_id, municipalities [ municipality_id ].replace(" ", "_"))
 		save_buildings(filename)
 
 		message("Done in %s\n\n\n" % timeformat(time.time() - mun_start_time))
 
 	else:
-		failed_runs.append(municipality_name)
+		failed_runs.append("#%s %s" % (municipality_id, municipalities[ municipality_id ]))
 
 
 
@@ -1083,9 +1466,8 @@ if __name__ == '__main__':
 
 	municipalities = {}
 	building_types = {}
-	buildings = {}
-	neighbour_buildings = []
-	dwellings = {}
+	buildings = []
+	buildings_index = {}
 	remove_nodes = set()
 	failed_runs = []
 
@@ -1100,7 +1482,6 @@ if __name__ == '__main__':
 
 	if "-debug" in sys.argv:
 		debug = True
-		verbose = True
 
 	if "-verify" in sys.argv:
 		verify = True
@@ -1123,22 +1504,27 @@ if __name__ == '__main__':
 
 	input_filename = ""
 	if len(sys.argv) > 2 and ".geojson" in sys.argv[2]:
-		input=filename = sys.argv[2]
+		input_filename = sys.argv[2]
+
+	# Get Geotorget login details
+
+	if not input_filename:
+		token = get_token()
 
 	# Process
 
 	load_building_types()
 
-	if len(municipality_id) == 2:  # County
+	if municipality_id == "00":  # Sweden
 		message ("Generating building files for all municipalities in %s\n\n" % municipalities[ municipality_id ])
 		for mun_id in sorted(municipalities.keys()):
-			if len(mun_id) == 4 and mun_id[0:2] == municipality_id and mun_id >= start_municipality or municipality_id == "00":
-				process_municipality(mun_id, municipalities[ mun_id ])
+			if mun_id >= start_municipality and mun_id != "00":
+				process_municipality(mun_id)
 		message("%s done in %s\n\n" % (municipalities[ municipality_id ], timeformat(time.time() - start_time)))
 		if failed_runs:
 			message ("*** Failed runs: %s\n\n" % (", ".join(failed_runs)))
 	else:
-		process_municipality(municipality_id, municipalities[ municipality_id ], input_filename=input_filename)
+		process_municipality(municipality_id,  input_filename=input_filename)
 
 #		if "-split" in sys.argv:
 #			message("Start splitting...\n\n")
