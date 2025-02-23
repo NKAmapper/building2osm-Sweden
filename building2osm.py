@@ -3,7 +3,7 @@
 
 # buildings2osm
 # Converts buildings from Lantmäteriet to geosjon file for import to OSM.
-# Usage: buildings2osm.py <municipality name> [-original] [-verify] [-debug]
+# Usage: buildings2osm.py <municipality name> [geojson or gpkg input filename] [-original] [-verify] [-debug]
 # Creates geojson file with name "byggnader_2181_Sandviken.geojson" etc.
 
 
@@ -17,11 +17,11 @@ import json
 import os
 import io
 import base64
-import urllib.request
+import urllib.request, urllib.error
 import zipfile
 
 
-version = "0.9.0"
+version = "0.9.1"
 
 debug = False				# Add debugging / testing information
 verify = False				# Add tags for users to verify
@@ -44,6 +44,7 @@ curve_margin_nodes = 3		# At least three nodes in a curve (number of nodes)
 
 spike_margin = 170			# Max angle/bearing for spikes (degrees)
 
+token_filename = "geotorget_token.txt"  # Stored Geotorget credentials
 
 
 # Output message to console
@@ -342,8 +343,8 @@ def get_municipality (parameter):
 
 def get_token():
 
-	token_filename = "geotorget_token.txt"
 	if os.path.isfile(token_filename):
+		message ("Loading Geotorget credentials from file '%s'\n\n" % token_filename)
 		file = open(token_filename)
 		token = file.read()
 		file.close()
@@ -356,7 +357,7 @@ def get_token():
 		file = open(token_filename, "w")
 		file.write(token)
 		file.close()
-		message ("\n")
+		message ("\tStoring credentials in file '%s'\n\n" % token_filename)
 
 	return token
 
@@ -396,11 +397,7 @@ def load_buildings(municipality_id, filename=""):
 
 	# Load GeoJSON file
 
-	if filename:
-		if not os.path.isfile(filename):
-			sys.exit("\t*** File not found\n\n")
-		elif ".geojson" not in filename:
-			sys.exit("\t*** Please provide a GeoJSON file\n\n")
+	if filename and ".geojson" in filename:
 
 		message ("\tLoading from file '%s' ...\n" % filename)
 
@@ -441,24 +438,43 @@ def load_buildings(municipality_id, filename=""):
 		    message=".*has GPKG application_id, but non conformant file extension.*"
 		)
 
-		# Load from Geotorget
+		if filename:
+			# Load local GeoPackage file
 
-		message ("\tLoading from Lantmäteriet ...\n")
+			message ("\tLoading file '%s' ...\n" % filename)
+			gdf = gpd.read_file(filename)
 
-		header = { 'Authorization': 'Basic ' +  token }
-		url = "https://dl1.lantmateriet.se/byggnadsverk/byggnad_kn%s.zip" % municipality_id
-		filename = "byggnad_kn%s.gpkg" % municipality_id
+		else:
+			# Load from Geotorget
 
-		request = urllib.request.Request(url, headers = header)
-		file_in = urllib.request.urlopen(request)
-		zip_file = zipfile.ZipFile(io.BytesIO(file_in.read()))
-		file = zip_file.open(filename)
+			message ("\tLoading from Lantmäteriet ...\n")
 
-		gdf = gpd.read_file(file)
+			header = { 'Authorization': 'Basic ' +  token }
+			url = "https://dl1.lantmateriet.se/byggnadsverk/byggnad_kn%s.zip" % municipality_id
+			filename = "byggnad_kn%s.gpkg" % municipality_id
+			request = urllib.request.Request(url, headers = header)
 
-		file.close()
-		zip_file.close()
-		file_in.close()
+			try:
+				file_in = urllib.request.urlopen(request)
+			except urllib.error.HTTPError as e:
+				message ("\t*** HTTP error %i: %s\n" % (e.code, e.reason))
+				if e.code == 401:  # Unauthorized
+					message ("\t*** Wrong username (email) or password, or you need approval for 'Byggnad nedladdning, direkt' at Geotorget\n\n")
+					os.remove(token_filename)
+					sys.exit()
+				elif e.code == 403:  # Blocked
+					sys.exit()
+				else:
+					return
+
+			zip_file = zipfile.ZipFile(io.BytesIO(file_in.read()))
+			file = zip_file.open(filename)
+
+			gdf = gpd.read_file(file)
+
+			file.close()
+			zip_file.close()
+			file_in.close()
 
 		# Transform to GeoJSON format
 
@@ -1503,8 +1519,10 @@ if __name__ == '__main__':
 		start_municipality = sys.argv[2]
 
 	input_filename = ""
-	if len(sys.argv) > 2 and ".geojson" in sys.argv[2]:
+	if len(sys.argv) > 2 and (".geojson" in sys.argv[2] or ".gpkg" in sys.argv[2]):
 		input_filename = sys.argv[2]
+		if not os.path.isfile(input_filename):
+			sys.exit("\t*** File '%s' not found\n\n" % input_filename)
 
 	# Get Geotorget login details
 
@@ -1529,3 +1547,4 @@ if __name__ == '__main__':
 #		if "-split" in sys.argv:
 #			message("Start splitting...\n\n")
 #			subprocess.run(['python', "building_split.py", municipality_id])
+
