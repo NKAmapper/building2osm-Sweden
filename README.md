@@ -6,11 +6,11 @@ Tools for importing buildings in Sweden to OpenStreetMap
 Downloads buildings from Geotorget and generates tagged geojson import file with building footprints.
 
 Usage:
-<code>python3 building2osm.py \<municipality\> [\<filename.geosjon\>] [-split] [-original] [-verify] [-debug]</code>
+<code>python3 building2osm.py \<municipality\> [\<input filename\>] [-split] [-original] [-verify] [-debug]</code>
 
 Parameters:
 * _municipality_ - Name of the municipality to generate. Output for several municipalities if "Sweden" is given.
-* _filename.geojson_ - Optional file containing source data of buildings for municipality, otherwise automatic downloading from Geotorget.
+* _input filename_ - Optional GeoJSON or GeoPackage file containing source data of buildings for municipality, otherwise automatic downloading from Geotorget.
 * <code>-split</code> - Also split output file into smaller subdivisions ("bydel", electoral or post districts).
 * <code>-original</code> - Produce file without any modifications.
 * <code>-verify</code> - Include extra tags for verification of topology modifications.
@@ -64,7 +64,8 @@ Parameters:
   * The _building_merge.py_ program may be run several times for the same municipality. Only buildings with a new _ref:lantmateriet:byggnad_ tag will be added each time.
 
 ### Changelog
-* Added _building_split.py_.
+* 2025-01-22: _building2osm.py_: Direct loading from Geotorget; Adjacent buildings connected. Improved building topology.
+* 2025-01-16: Added _building_split.py_.
 
 ### References
 
