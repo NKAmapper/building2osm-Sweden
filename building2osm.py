@@ -3,7 +3,7 @@
 
 # buildings2osm
 # Converts buildings from Lantmäteriet to geosjon file for import to OSM.
-# Usage: buildings2osm.py <municipality name> [geojson or gpkg input filename] [-original] [-verify] [-debug]
+# Usage: buildings2osm.py <municipality name> [geojson or gpkg input filename] [-split] [-original] [-verify] [-debug]
 # Creates geojson file with name "byggnader_2181_Sandviken.geojson" etc.
 
 
@@ -19,9 +19,10 @@ import io
 import base64
 import urllib.request, urllib.error
 import zipfile
+import subprocess
 
 
-version = "0.9.1"
+version = "0.9.2"
 
 debug = False				# Add debugging / testing information
 verify = False				# Add tags for users to verify
@@ -31,9 +32,9 @@ precision = 7				# Number of decimals in coordinate output
 
 snap_margin = 0.2 			# Max margin for connecting building nodes/edges (meters)
 
-angle_margin = 8.0			# Max margin around angle limits, for example around 90 degrees corners (degrees)
-short_margin = 0.3			# Min length of short wall which will be removed if on "straight" line (meters)
-corner_margin = 1.0			# Max length of short wall which will be rectified even if corner is outside of 90 +/- angle_margin (meters)
+angle_margin = 8.0 			# Max margin around angle limits, for example around 90 degrees corners (degrees)
+short_margin = 0.2			# Min length of short wall which will be removed if on "straight" line (meters)
+corner_margin = 0.5			# Max length of short wall which will be rectified even if corner is outside of 90 +/- angle_margin (meters)
 rectify_margin = 0.3		# Max relocation distance for nodes during rectification before producing information tag (meters)
 
 simplify_margin = 0.03		# Minimum tolerance for buildings with curves in simplification (meters)
@@ -636,7 +637,7 @@ def verify_building_geometry():
 					found = False
 					for j in range(1, len(new_polygon) - 1):
 						if new_polygon[ j - 1 ] == new_polygon[ j + 1 ]:
-							remove_nodes.add(new_polygon[ j ])
+							removed_nodes.add(new_polygon[ j ])
 							new_polygon = new_polygon[ : j - 1 ] + new_polygon[ j + 1 : ]
 							found = True
 							break
@@ -644,11 +645,11 @@ def verify_building_geometry():
 					if not found:
 						# Special case: Duplicate segment wrapped around start/end of polygon
 						if new_polygon[-1] == new_polygon[1]:
-							remove_nodes.add(new_polygon[0])
+							removed_nodes.add(new_polygon[0])
 							new_polygon = new_polygon[1:-1]
 							found = True
 						elif new_polygon[-2] == new_polygon[0]:
-							remove_nodes.add(new_polygon[-1])
+							removed_nodes.add(new_polygon[-1])
 							new_polygon = new_polygon[:-2]
 							found = True
 
@@ -671,7 +672,7 @@ def verify_building_geometry():
 				found = False
 				for j in range(1, len(new_polygon) - 1):
 					if abs(bearing_turn(new_polygon[ j - 1 ], new_polygon[ j ], new_polygon[ j + 1 ])) > spike_margin:
-						remove_nodes.add(new_polygon[ j ])
+						removed_nodes.add(new_polygon[ j ])
 						new_polygon = new_polygon[ : j ] + new_polygon[ j + 1 : ]
 						found = True
 						break
@@ -679,11 +680,11 @@ def verify_building_geometry():
 				if not found:
 					# Special case: Spike wrapped around start/end of polygon
 					if abs(bearing_turn(new_polygon[-1], new_polygon[0], new_polygon[1])) > spike_margin:
-						remove_nodes.add(new_polygon[0])
+						removed_nodes.add(new_polygon[0])
 						new_polygon = new_polygon[1:]
 						found = True
 					elif abs(bearing_turn(new_polygon[-2], new_polygon[-1], new_polygon[0])) > spike_margin:
-						remove_nodes.add(new_polygon[-1])
+						removed_nodes.add(new_polygon[-1])
 						new_polygon = new_polygon[:-1]
 						found = True
 
@@ -1005,17 +1006,17 @@ def rectify_buildings():
 					short_length = min(distance(last_corner, polygon[i]), distance(polygon[i], polygon[i+1])) # Test short walls
 
 					# Remove short wall if on (almost) straight line
-					if distance(polygon[i], polygon[i+1]) < short_margin and \
-							abs(test_corner + bearing_turn(polygon[i], polygon[i+1], polygon[(i+2) % (len(polygon)-1)])) < angle_margin and \
-							nodes[ polygon[i] ]['use'] == 1:
+					if (distance(polygon[i], polygon[i+1]) < short_margin
+							and abs(test_corner + bearing_turn(polygon[i], polygon[i+1], polygon[(i+2) % (len(polygon)-1)])) < 0.5 * angle_margin
+							and nodes[ polygon[i] ]['use'] == 1):
 
 						update_corner(corners, None, polygon[i], 0)
 						building['properties']['VERIFY_SHORT_REMOVE'] = "%.2f" % distance(polygon[i], polygon[i+1])
 
 					# Identify (almost) 90 degree corner and start new wall
-					elif 90 - angle_margin < abs(test_corner) < 90 + angle_margin or \
-							 short_length < corner_margin and 60 < abs(test_corner) < 120 and nodes[ polygon[i] ]['use'] == 1:
-#							 45 - angle_margin < abs(test_corner) < 45 + angle_margin or \
+					elif (90 - angle_margin < abs(test_corner) < 90 + angle_margin
+							or short_length < corner_margin and 60 < abs(test_corner) < 120 and nodes[ polygon[i] ]['use'] == 1):
+#							 45 - angle_margin < abs(test_corner) < 45 + angle_margin or
 
 						update_corner(corners, wall, polygon[i], 1)
 						patch_walls.append(wall)  # End of previous wall, store it
@@ -1029,7 +1030,7 @@ def rectify_buildings():
 						count_corners += 1
 
 					# Not possible to rectify if wall is other than (almost) straight line
-					elif abs(test_corner) > angle_margin:
+					elif abs(test_corner) > 0.5 * angle_margin:
 						conform = False
 						building['properties']['DEBUG_NORECTIFY'] = "No, %i degree angle" % test_corner
 						last_corner = polygon[i]
@@ -1082,7 +1083,7 @@ def rectify_buildings():
 					for wall in patch:
 						if node in wall['nodes']:
 							wall['nodes'].remove(node)
-				remove_nodes.add(node)
+				removed_nodes.add(node)
 				del corners[node]
 				count_remove += 1
 
@@ -1254,6 +1255,7 @@ def rectify_buildings():
 	verify_building_geometry()
 
 
+
 # Simplify polygon
 # Remove redundant nodes, i.e. nodes on (almost) staight lines
 
@@ -1337,11 +1339,12 @@ def simplify_buildings():
 						angle = bearing_turn(last_node, polygon[i], polygon[i+1])
 						length = distance(polygon[i], polygon[i+1])
 
-						if (abs(angle) < angle_margin or \
-							length < short_margin and \
-								(abs(angle) < 40 or \
-								abs(angle + bearing_turn(polygon[i], polygon[i+1], polygon[(i+2) % (len(polygon)-1)])) < angle_margin) or \
-							length < corner_margin and abs(angle) < 2 * angle_margin):
+						if (abs(angle) < angle_margin
+							or length < short_margin
+								and (abs(angle) < 40
+									or abs(angle + bearing_turn(polygon[i], polygon[i+1], polygon[(i+2) % (len(polygon)-1)])) < angle_margin)
+							or length < corner_margin
+								and abs(angle) < 2 * angle_margin):
 
 							nodes[ polygon[i] ] -= 1
 							if angle > angle_margin - 2:
@@ -1354,7 +1357,7 @@ def simplify_buildings():
 
 	# Create set of nodes which may be deleted without conflicts
 
-	already_removed = len(remove_nodes)
+	remove_nodes = set()
 	for node in nodes:
 		if nodes[ node ] == 0:
 			remove_nodes.add(node)
@@ -1377,6 +1380,8 @@ def simplify_buildings():
 							polygon[-1] = polygon[0]
 			if removed:
 				count_building += 1
+
+	removed_nodes.update(remove_nodes)
 
 	message ("\tRemoved %i redundant nodes in %i buildings\n" % (count_remove, count_building))
 
@@ -1426,7 +1431,7 @@ def save_buildings(filename):
 	# Add removed nodes, for debugging
 
 	if debug or verify:
-		for node in remove_nodes:
+		for node in removed_nodes:
 			feature = {
 				'type': 'Feature',
 				'geometry': {
@@ -1453,7 +1458,7 @@ def process_municipality(municipality_id, input_filename=""):
 	message ("Municipality: %s %s\n\n" % (municipality_id, municipalities[ municipality_id ]))
 
 	buildings.clear()
-	remove_nodes.clear()
+	removed_nodes.clear()
 
 	load_buildings(municipality_id, input_filename)
 
@@ -1463,7 +1468,7 @@ def process_municipality(municipality_id, input_filename=""):
 			rectify_buildings()
 			simplify_buildings()
 
-		filename = "byggnader_%s_%s.geojson" % (municipality_id, municipalities [ municipality_id ].replace(" ", "_"))
+		filename = "byggnader_%s_%s.geojson" % (municipality_id, municipalities[ municipality_id ].replace(" ", "_"))
 		save_buildings(filename)
 
 		message("Done in %s\n\n\n" % timeformat(time.time() - mun_start_time))
@@ -1480,12 +1485,11 @@ if __name__ == '__main__':
 	start_time = time.time()
 	message ("\n*** building2osm v%s ***\n\n" % version)
 
-	municipalities = {}
-	building_types = {}
-	buildings = []
-	buildings_index = {}
-	remove_nodes = set()
-	failed_runs = []
+	municipalities = {}		# All municipalities + 00 Sverige
+	building_types = {}		# Default tagging per building type
+	buildings = []			# List of all buildings
+	removed_nodes = set()	# For verification/debugging
+	failed_runs = []		# Municipalities which did not complete
 
 	addr = {}
 
@@ -1544,7 +1548,6 @@ if __name__ == '__main__':
 	else:
 		process_municipality(municipality_id,  input_filename=input_filename)
 
-#		if "-split" in sys.argv:
-#			message("Start splitting...\n\n")
-#			subprocess.run(['python', "building_split.py", municipality_id])
-
+		if "-split" in sys.argv:
+			message("Start splitting...\n\n")
+			subprocess.run(['python', "building_split.py", municipality_id])
