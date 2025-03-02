@@ -3,7 +3,7 @@
 
 # building_split.py
 # Splits buildings import file into smaller parts.
-# Usage: building_split.py <municipality name> or <filename.geojson> [-tag] [-debug].
+# Usage: building_split.py <municipality name> or <filename.geojson> [<split size>] [-tag/-one] [-debug].
 # Creates partitioned geojson files.
 
 import math
@@ -14,12 +14,12 @@ import os.path
 import urllib.request, urllib.parse
 
 
-version = "0.2.1"
+version = "0.3.0"
 
 overpass_api = "https://overpass-api.de/api/interpreter"  # Overpass endpoint
 #overpass_api = "https://overpass.kumi.systems/api/interpreter"
 
-import_folder = "~/Jottacloud/osm/byggnader Sverige/"  # Folder containing import building files (default folder tried first)
+import_folder = "~/Jottacloud/OSM/Byggnader Sverige/"  # Folder containing import building files (default folder tried first)
 
 debug = False
 
@@ -142,7 +142,10 @@ def inside_multipolygon (point, multipolygon):
 def load_municipalities():
 
 	url = "https://catalog.skl.se/rowstore/dataset/4c544014-8e8f-4832-ab8e-6e787d383752/json?_limit=400"
-	file = urllib.request.urlopen(url)
+	try:
+		file = urllib.request.urlopen(url)
+	except urllib.error.HTTPError as e:
+		sys.exit("\t*** Failed to load municipalities, HTTP error %i: %s\n\n" % (e.code, e.reason))
 	data = json.load(file)
 	file.close()
 
@@ -154,42 +157,38 @@ def load_municipalities():
 
 
 
-# Identify municipality name, unless more than one hit
-# Returns municipality number, or input parameter if not found
+# Identify municipality name, unless more than one hit.
+# Returns municipality number.
 
 def get_municipality (parameter):
 
-	if parameter.isdigit():
+	if parameter.isdigit() and parameter in municipalities:
 		return parameter
-
 	else:
-		parameter = parameter
-		found_id = ""
-		duplicate = False
+		found_ids = []
 		for mun_id, mun_name in iter(municipalities.items()):
 			if parameter.lower() == mun_name.lower():
 				return mun_id
 			elif parameter.lower() in mun_name.lower():
-				if found_id:
-					duplicate = True
-				else:
-					found_id = mun_id
+				found_ids.append(mun_id)
 
-		if found_id and not duplicate:
-			return found_id
+		if len(found_ids) == 1:
+			return found_ids[0]
+		elif not found_ids:
+			sys.exit("*** Municipality '%s' not found\n\n" % parameter)
 		else:
-			return parameter
+			mun_list = [ "%s %s" % (mun_id, municipalities[ mun_id ]) for mun_id in found_ids ]
+			sys.exit("*** Multiple municipalities found for '%s' - please use full name:\n%s\n\n" % (parameter, ", ".join(mun_list)))
 
 
 
-# Load buildings from geojson file
+# Load import buildings from geojson file
 
 def load_import_buildings(filename):
 
 	global import_buildings
 
 	message ("Loading import buildings ...\n")
-	message ("\tFilename '%s'\n" % filename)
 
 	if not os.path.isfile(filename):
 		test_filename = os.path.expanduser(import_folder + filename)
@@ -198,6 +197,7 @@ def load_import_buildings(filename):
 		else:
 			sys.exit("\t*** File not found\n\n")
 
+	message ("\tFilename '%s'\n" % filename)
 	file = open(filename)
 	data = json.load(file)
 	file.close()
@@ -316,17 +316,22 @@ def split_buildings():
 
 	min_bbox = (min([ building['centre'][0] for building in buildings ]),
 				min([ building['centre'][1] for building in buildings ]))
-	max_bbox = (max([ building['centre'][0] for building in buildings ]),
-				max([ building['centre'][1] for building in buildings ]))
+	max_bbox = (max([ building['centre'][0] for building in buildings ]) + 0.0001,
+				max([ building['centre'][1] for building in buildings ]) + 0.0001)
 
 	# Start recursive splitting into boxes
+
 	split_box(min_bbox, max_bbox, 1)
 
 	for building in buildings:
 		if "centre" in building:
 			del building['centre']
 
-	message ("\t%i subdivisions\n" % subdivision)
+	message ("\t%i subdivisions: " % subdivision)
+
+	count_parts = [ str(sum(1 for b in buildings if b['properties']['PART'] == str(part) ))
+							for part in range(1, subdivision + 1) ]
+	message ("%s\n" % ", ".join(count_parts))
 
 
 
@@ -353,7 +358,7 @@ def save_buildings(filename, one_file):
 
 		part_filename = out_filename.replace(".geojson", "") + "_parts.geojson"
 		file = open(part_filename, "w")
-		json.dump(collection, file, indent=2, ensure_ascii=False)
+		json.dump(collection, file, ensure_ascii=False)  # indent=1
 		file.close()		
 
 		message ("\tSaved %i buildings to file '%s'\n" % (len(buildings), part_filename))
@@ -377,7 +382,7 @@ def save_buildings(filename, one_file):
 			}
 
 			file = open(part_filename, "w")
-			json.dump(collection, file, indent=2, ensure_ascii=False)
+			json.dump(collection, file, ensure_ascii=False)  # indent=1
 			file.close()
 
 			message ("\tSaved %i buildings to file '%s'\n" % (len(features), part_filename))
@@ -398,10 +403,10 @@ if __name__ == '__main__':
 
 	# Get municipality
 
-	load_municipalities()
-
 	if len(sys.argv) < 2:
 		sys.exit("Please provide name of municipality or geosjon filename\n")
+
+	load_municipalities()
 
 	if ".geojson" in sys.argv[1]:
 		filename = sys.argv[1]
@@ -409,9 +414,6 @@ if __name__ == '__main__':
 	else:
 		municipality_query = sys.argv[1]
 		municipality_id = get_municipality(municipality_query)
-		if municipality_id is None or municipality_id not in municipalities:
-			sys.exit("Municipality '%s' not found\n" % municipality_query)
-	
 		message ("Municipality: %s %s\n" % (municipality_id, municipalities[ municipality_id ]))
 		filename = "byggnader_%s_%s.geojson" % (municipality_id, municipalities[ municipality_id ].replace(" ", "_"))
 
