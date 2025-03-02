@@ -12,18 +12,18 @@ import sys
 import time
 import json
 import os.path
-import urllib.request, urllib.parse
+import urllib.request, urllib.parse,  urllib.error
 from xml.etree import ElementTree as ET
 
 
-version = "0.10.3"
+version = "0.11.0"
 
 request_header = {"User-Agent": "building2osm"}
 
 overpass_api = "https://overpass-api.de/api/interpreter"  # Overpass endpoint
 #overpass_api = "https://overpass.kumi.systems/api/interpreter"
 
-import_folder = "~/Jottacloud/osm/byggnader Sverige/"  # Folder containing import building files (default folder tried first)
+import_folder = "~/Jottacloud/OSM/Byggnader Sverige/"  # Folder containing import building files (default folder tried first)
 
 margin_hausdorff = 15.0	# Maximum deviation between polygons (meters)
 margin_tagged = 7.5		# Maximum deviation between polygons if building is tagged (meters)
@@ -36,14 +36,14 @@ lm_residential_tags = ["detached", "house", "terrace", "apartments"]  # Will ove
 # Group of buildings types within which LM/OSM mismatch should not produce warning
 similar_buildings = {
 	'residential':	{"residential", "house", "detached", "apartments", "terrace", "allotment_house", "semidetached_house",
-					"cabin", "bungalow", "farm", "semi", "hut"},
-	'industrial':	{"industrial", "warehouse",  "storage_tank", "manufacture"},
-	'commercial':	{"commercial", "retail", "office", "hotel", "supermarket", "kiosk", "roof"},
+					"cabin", "bungalow", "farm", "semi", "hut", "shed"},
+	'industrial':	{"industrial", "warehouse",  "storage_tank", "manufacture", "commercial", "shed"},
+	'commercial':	{"commercial", "retail", "office", "hotel", "supermarket", "kiosk", "roof", "industrial", "shed"},
 	'civic':		{"civic", "service", "hospital", "train_station", "parking", "public", "hangar", "dormitory", "toilets", "bunker",
-					"government", "transportation", "fire_station", "bridge", "museum", "roof"},
+					"government", "transportation", "fire_station", "bridge", "museum", "roof", "shed"},
 	'school':		{"civic", "school", "kindergarten", "university", "college"},
 	'sport':		{"sports_hall", "sports_centre", "riding_hall"},
-	'regligious':	{"religious", "church", "chapel", "mosque"},
+	'religious':	{"religious", "church", "chapel", "mosque", "bell_tower"},
 	'farm':			{"barn", "farm_auxiliary", "greenhouse", "stable", "slurry_tank", "garages", "garage", "carport", "roof", "shed"}
 }
 
@@ -407,31 +407,28 @@ def polygon_overlap (polygon1, polygon2):
 
 
 
-# Identify municipality name, unless more than one hit
-# Returns municipality number, or input parameter if not found
+# Identify municipality name, unless more than one hit.
+# Returns municipality number.
 
 def get_municipality (parameter):
 
-	if parameter.isdigit():
+	if parameter.isdigit() and parameter in municipalities:
 		return parameter
-
 	else:
-		parameter = parameter
-		found_id = ""
-		duplicate = False
+		found_ids = []
 		for mun_id, mun_name in iter(municipalities.items()):
 			if parameter.lower() == mun_name.lower():
 				return mun_id
 			elif parameter.lower() in mun_name.lower():
-				if found_id:
-					duplicate = True
-				else:
-					found_id = mun_id
+				found_ids.append(mun_id)
 
-		if found_id and not duplicate:
-			return found_id
+		if len(found_ids) == 1:
+			return found_ids[0]
+		elif not found_ids:
+			sys.exit("*** Municipality '%s' not found\n\n" % parameter)
 		else:
-			return parameter
+			mun_list = [ "%s %s" % (mun_id, municipalities[ mun_id ]) for mun_id in found_ids ]
+			sys.exit("*** Multiple municipalities found for '%s' - please use full name:\n%s\n\n" % (parameter, ", ".join(mun_list)))
 
 
 
@@ -440,7 +437,10 @@ def get_municipality (parameter):
 def load_municipalities():
 
 	url = "https://catalog.skl.se/rowstore/dataset/4c544014-8e8f-4832-ab8e-6e787d383752/json?_limit=400"
-	file = urllib.request.urlopen(url)
+	try:
+		file = urllib.request.urlopen(url)
+	except urllib.error.HTTPError as e:
+		sys.exit("\t*** Failed to load municipalities, HTTP error %i: %s\n\n" % (e.code, e.reason))
 	data = json.load(file)
 	file.close()
 
@@ -459,7 +459,6 @@ def load_import_buildings(filename):
 	global import_buildings
 
 	message ("Loading import buildings ...\n")
-	message ("\tFilename '%s'\n" % filename)
 
 	if not os.path.isfile(filename):
 		test_filename = os.path.expanduser(import_folder + filename)
@@ -467,6 +466,8 @@ def load_import_buildings(filename):
 			filename = test_filename
 		else:
 			sys.exit("\t*** File not found\n\n")
+
+	message ("\tFilename '%s'\n" % filename)
 
 	file = open(filename)
 	data = json.load(file)
@@ -511,7 +512,10 @@ def load_osm_buildings(municipality_id):
 
 	query = '[out:json][timeout:120];(area["ref:scb"=%s][admin_level=7];)->.a;(nwr["building"](area.a););(._;>;<;>;);out center meta;' % (municipality_id)
 	request = urllib.request.Request(overpass_api + "?data=" + urllib.parse.quote(query), headers=request_header)
-	file = urllib.request.urlopen(request)
+	try:
+		file = urllib.request.urlopen(request)
+	except urllib.error.HTTPError as e:
+		sys.exit("\t*** Failed to load OSM buildings from Overpass, HTTP error %i: %s\n\n" % (e.code, e.reason))
 	data = json.load(file)
 	file.close()
 	osm_elements = data['elements']
@@ -582,16 +586,20 @@ def load_osm_buildings(municipality_id):
 				building['tags']['AREA'] = str(building['area'])
 
 	message ("\t%i buildings loaded (%i elements)\n" % (len(osm_buildings), len(osm_elements)))
-	message ("\t%i buildings with tags other than building=*\n" % tag_count)
+	message ("\t%i buildings with tags other than building=* and addr:x=*\n" % tag_count)
 
-	# Get top contributors
+	# Get top contributors and last update
 
 	users = {}
+	last_date = ""
 	for element in osm_elements:
 		if "tags" in element and "building" in element['tags']:
 			if element['user'] not in users:
 				users[ element['user'] ] = 0
 			users[ element['user'] ] += 1
+		if "timestamp" in element and element['timestamp'] > last_date:
+			last_date = element['timestamp']
+			last_user = element['user']
 
 	sorted_users = sorted(users.items(), key=lambda x: x[1], reverse=True)
 
@@ -599,6 +607,9 @@ def load_osm_buildings(municipality_id):
 	for i, user in enumerate(sorted_users):
 		if user[1] > 10 and i < 10 or user[1] >= 100:
 			message ("\t\t%s (%i)\n" % (user[0], user[1]))
+
+	if last_date:
+		message ("\tLast update %s UTC by %s\n" % (last_date[:16].replace("T", " "), last_user))
 
 
 
@@ -791,19 +802,22 @@ def add_building(building, osm_element):
 
 					# Produce "warning"/tag suggestion
 					elif (osm_tags['building'] != value
-								and value != "yes"  # Too vague
-								and "," not in lm_type
-								and not similar_building_type(lm_tags['building'], osm_tags['building'])):
-							osm_tags['LM_BUILDING'] = value
+								and (value != "yes"  # Too vague
+										and "," not in lm_type
+										and not similar_building_type(lm_tags['building'], osm_tags['building'])
+									or value in ["church", "chapel"])):
+							osm_tags['LM_building'] = value
 							if lm_type:
 								osm_tags['BTYPE'] = lm_type
 
 				# Produce information about LM name=* etc not used due to tag conflict
-				elif key in osm_tags and osm_tags[ key ] != value:
-					osm_tags[ "LM_" + key.upper() ] = value
-
-				else:
-					way_element['tags'][ key ] = value
+				elif not (key in ["name", "alt_name", "description"]
+						and any(k != key and k in osm_tags and osm_tags[ k ] == value for k in ["name", "alt_name", "description"])):
+					if key in osm_tags and osm_tags[ key ] != value:
+#						if not (key in ["name", "alt_name", "description"] and osm_tags[ key ].lower() == value.lower()):
+						osm_tags[ "LM_" + key ] = value
+					else:
+						way_element['tags'][ key ] = value
 
 			# Delete certain tags
 
@@ -1233,8 +1247,6 @@ if __name__ == '__main__':
 	load_municipalities()
 	municipality_query = sys.argv[1]
 	municipality_id = get_municipality(municipality_query)
-	if municipality_id is None or municipality_id not in municipalities:
-		sys.exit("Municipality '%s' not found\n" % municipality_query)
 	
 	message ("Municipality: %s %s\n\n" % (municipality_id, municipalities[ municipality_id ]))
 
