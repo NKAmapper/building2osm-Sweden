@@ -6,7 +6,7 @@ Tools for importing buildings in Sweden to OpenStreetMap
 Downloads buildings from Geotorget and generates tagged geojson import file with building footprints.
 
 Usage:
-<code>python3 building2osm.py \<municipality\> [\<input filename\>] [-split] [-original] [-verify] [-debug]</code>
+<code>python3 building2osm.py \<municipality\> [\<input filename\>] [-split] [-original] [-verify] [-debug] [-heritage]</code>
 
 Parameters:
 * _municipality_ - Name of the municipality to generate. Output for several municipalities if "Sweden" is given.
@@ -15,6 +15,7 @@ Parameters:
 * <code>-original</code> - Produce file without any modifications.
 * <code>-verify</code> - Include extra tags for verification of topology modifications.
 * <code>-debug</code> - Include extra tags for debugging.
+* <code>-heritage</code> - Save separate GeoJSON file with all protected heritage buildings (points) in Sweden.
 
 ### building_merge
 
@@ -42,7 +43,7 @@ Parameters:
 * _target_size_ - Optional target size, i.e. number of buildings per partitioned file (default 10.000).
 
 ### Notes
-* Source data is from Lantmäteriet. 
+* Source data is from Lantmäteriet, combined with heritage data from Riksantikvarieämbetet. 
 * The <code>building=*</code> tag is given a value corresponding to the _building_tags_ translation table in this respository. Please provide feedback if you observe that the tagging should be modified. 
 * Certain modifications of the footprint polygons are made to avoid clutter in OSM:
   * Polygons which are almost square are rectified (orthogonalized) to get exact 90 degrees corners. Groups of connected buildings are rectified as a group. Multipolygons are supported. A polygon is not rectified if it would relocate one of its nodes by more than 20 centimeters.
@@ -57,18 +58,21 @@ Parameters:
   * Use the To-do plugin in JOSM to:
     1) Resolve _Overlapping buildings_ warnings. 
     2) Resolve _Building within buildings_ warnings.
-    3) Check <code>LM_BUILDING=*</code> for considering manual retagging of building types.
-    4) Check untouched existing OSM buildings (search for <code>building=* -modified -parent modified</code>).
-    5) Check if entrances or other tagged nodes needs to be reconnected to the new buildings (search for <code>type:node ways:0 -untagged</code>).
+    3) Resolve _Self-intersecting ways_ and _Self crossing ways_ warnings.
+    4) Check <code>LM_building=*</code> for considering manual retagging of building types.
+    5) Check untouched existing OSM buildings (search for <code>building=* -modified -parent modified</code>).
+    6) Check if entrances or other tagged nodes needs to be reconnected to the new buildings (search for <code>type:node ways:0 -untagged</code>).
   * Consider using _Edit->Purge_ in JOSM to work on a subset of a large municipality.
   * The _building_merge.py_ program may be run several times for the same municipality. Only buildings with a new _ref:lantmateriet:byggnad_ tag will be added each time.
 
 ### Changelog
+* 2025-03-02: _building2osm.py_: Load heritage data from Riksantikvarieämbetet; Better topology/more details; Improved circles; More user-friendly municipality identification; File exception handling.
 * 2025-01-22: _building2osm.py_: Direct loading from Geotorget; Adjacent buildings connected. Improved building topology.
 * 2025-01-16: Added _building_split.py_.
 
 ### References
 
-* [Lantmäteriet product page](https://geotorget.lantmateriet.se/dokumentation/GEODOK/25/latest.html)
+* [Lantmäteriet (The Swedish Mapping Authority)](https://geotorget.lantmateriet.se/dokumentation/GEODOK/25/latest.html)
+* [Riksantikvarieämbetet (The Swedish National Heritage Board)](https://www.raa.se/hitta-information/bebyggelseregistret/)
 * [OSM Sweden building import plan](https://wiki.openstreetmap.org/wiki/Import/Catalogue/Sweden_Building_Import)
 * [OSM building import progress](https://wiki.openstreetmap.org/wiki/Import/Catalogue/Sweden_Building_Import/Progress)
